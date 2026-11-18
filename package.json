@@ -137,6 +137,49 @@
             "default": {},
             "scope": "resource",
             "markdownDescription": "Remembered dependency-file disambiguation choices (base file name → `{ relPath, root }`), written automatically when you pick among duplicates. Portable/shareable: paths are relative to a workspace root so they re-resolve on another machine. Use the command **NVM: Reselect Dependency File** to change a choice. A machine-local absolute-path cache is kept separately in workspace state."
+          },
+          "nvmstudio.nvm.skills.mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "manual",
+              "off"
+            ],
+            "enumDescriptions": [
+              "The AI decides which skills to use (lexical pre-filter + model choice); `skill:<name>` forces one.",
+              "Only skills named explicitly with `skill:<name>` are used.",
+              "Skills are disabled everywhere (AI, decoding, field docs)."
+            ],
+            "default": "auto",
+            "markdownDescription": "How NVM Studio skills (playbooks + block knowledge, see `docs/features/skills.md`) are used."
+          },
+          "nvmstudio.nvm.skillRoots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "resource",
+            "markdownDescription": "Extra folders scanned for skills (each folder **and its `skills/` subfolder**; every subfolder with a `SKILL.md` is one skill). Highest priority. Supports `${workspaceFolder}`. Other roots: `skills/` beside layout descriptors, `<workspace>/.nvmstudio/skills`, `~/nvmstudio/skills` (or `$NVMSTUDIO_HOME/skills`), and the built-in skills. Workspace roots are only used in a trusted workspace."
+          },
+          "nvmstudio.nvm.skills.catalogSize": {
+            "type": "integer",
+            "default": 12,
+            "minimum": 1,
+            "maximum": 50,
+            "markdownDescription": "Maximum number of skills advertised to the AI per request (Top-K of the lexical pre-filter)."
+          },
+          "nvmstudio.nvm.skills.applyStructs": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Let block skills' `struct` catalogs decode bound blocks (and be offered to engines as a `structCatalog` overlay)."
+          },
+          "nvmstudio.nvm.chat.maxToolRounds": {
+            "type": "integer",
+            "default": 8,
+            "minimum": 1,
+            "maximum": 20,
+            "markdownDescription": "Maximum tool-calling rounds per `@nvm` request. Deep investigations that combine several skills may need more."
           }
         }
       }
@@ -377,6 +420,36 @@
         "command": "nvmStudio.compareSelected",
         "category": "%name%",
         "title": "%nvmStudio.compareSelected%"
+      },
+      {
+        "command": "nvmStudio.nvm.skills.new",
+        "category": "NVM",
+        "title": "New Skill…",
+        "icon": "$(add)"
+      },
+      {
+        "command": "nvmStudio.nvm.skills.reload",
+        "category": "NVM",
+        "title": "Reload Skills",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nvmStudio.nvm.skills.diagnostics",
+        "category": "NVM",
+        "title": "Show Skill Diagnostics",
+        "icon": "$(output)"
+      },
+      {
+        "command": "nvmStudio.nvm.skills.checkRules",
+        "category": "NVM",
+        "title": "Check Skill Rules & Relations",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "nvmStudio.nvm.skills.open",
+        "category": "NVM",
+        "title": "Open Skill",
+        "icon": "$(go-to-file)"
       }
     ],
     "viewsContainers": {
@@ -421,6 +494,10 @@
         {
           "id": "nvmStudio.annotations",
           "name": "Annotations"
+        },
+        {
+          "id": "nvmStudio.skills",
+          "name": "Skills"
         }
       ]
     },
@@ -430,7 +507,17 @@
         "name": "nvm",
         "fullName": "NVM Studio",
         "description": "Ask about the active AUTOSAR NVM dump (blocks, tags, notes, risks).",
-        "isSticky": true
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "skills",
+            "description": "List available NVM skills, their bound blocks and problems."
+          },
+          {
+            "name": "noskills",
+            "description": "Answer without automatic skills (troubleshooting)."
+          }
+        ]
       }
     ],
     "languageModelTools": [
@@ -668,6 +755,344 @@
           "nvm",
           "nvmstudio"
         ]
+      },
+      {
+        "name": "nvm_listSkills",
+        "displayName": "NVM: list skills",
+        "modelDescription": "List NVM Studio skills: 'playbook' skills describe HOW to investigate a kind of question (which tools in which order); 'block' skills describe WHAT a block means (field meanings, rules, relations). Shows how many blocks of the active dump each block skill binds. Filter by kind or a query.",
+        "toolReferenceName": "nvmListSkills",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "description": "Optional: 'playbook' or 'block'."
+            },
+            "query": {
+              "type": "string",
+              "description": "Optional words to rank skills by relevance."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max skills (default/cap 100)."
+            },
+            "offset": {
+              "type": "number",
+              "description": "Paging offset."
+            }
+          }
+        }
+      },
+      {
+        "name": "nvm_useSkill",
+        "displayName": "NVM: use skill",
+        "modelDescription": "Activate one skill by name and return its full guidance (Markdown body), bound blocks, field meanings, declared rules/relations, resources and the skills it composes. Call this BEFORE answering whenever a skill's description matches the user's request.",
+        "toolReferenceName": "nvmUseSkill",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Skill name, e.g. 'count-and-statistics'."
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+      {
+        "name": "nvm_readSkillResource",
+        "displayName": "NVM: read skill resource",
+        "modelDescription": "Read a resource file (checklist, enum table, struct JSON, examples) that a skill lists. Path is relative to the skill folder; capped at 8000 characters.",
+        "toolReferenceName": "nvmReadSkillResource",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(file)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Skill name."
+            },
+            "path": {
+              "type": "string",
+              "description": "Relative resource path as listed by nvm_useSkill."
+            }
+          },
+          "required": [
+            "name",
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "nvm_searchKnowledge",
+        "displayName": "NVM: search knowledge",
+        "modelDescription": "Search the text of ALL skills (including block skills that bind nothing in this dump) for a business term such as 'reset', 'odometer', 'DTC'. Use once before concluding that some information is not in the dump.",
+        "toolReferenceName": "nvmSearchKnowledge",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Words to search (Chinese or English)."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max hits (cap 10)."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "nvm_checkRules",
+        "displayName": "NVM: check skill rules",
+        "modelDescription": "Evaluate the declarative rules (single-block invariants) and relations (write ORDER, CO-WRITE, cross-block VALUE consistency, PRESENCE, REFERENCE) declared by skills against the active dump, and report violations with evidence. Pass skill names to check only those (a playbook also checks the skills it composes).",
+        "toolReferenceName": "nvmCheckRules",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(checklist)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "skills": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional skill names to check (default: all)."
+            },
+            "includePass": {
+              "type": "boolean",
+              "description": "Also list passing checks (default false)."
+            }
+          }
+        }
+      },
+      {
+        "name": "nvm_timeline",
+        "displayName": "NVM: write timeline",
+        "modelDescription": "Show blocks in WRITE ORDER (by the generic sequence hint), with version numbers per logical block. Use 'around' to see what was written immediately before/after a block (window), 'match' to filter by name globs, 'latestOnly' for the newest instance per block, 'newestFirst' to start from the most recent writes.",
+        "toolReferenceName": "nvmTimeline",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(history)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "match": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Name globs / substrings to include (OR)."
+            },
+            "around": {
+              "type": "string",
+              "description": "Center on the newest write of this block."
+            },
+            "window": {
+              "type": "number",
+              "description": "Entries before/after 'around' (default 10)."
+            },
+            "latestOnly": {
+              "type": "boolean",
+              "description": "Only newest instance per logical block."
+            },
+            "newestFirst": {
+              "type": "boolean",
+              "description": "Newest writes first."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max entries (default 100, cap 500)."
+            },
+            "offset": {
+              "type": "number",
+              "description": "Paging offset."
+            }
+          }
+        }
+      },
+      {
+        "name": "nvm_blockHistory",
+        "displayName": "NVM: block history",
+        "modelDescription": "Return every stored version of ONE logical block (same identity) in write order, with the decoded fields that changed on each write (before → after, numeric delta). Use to understand how a value evolved, when a counter incremented, or which write introduced a bad value.",
+        "toolReferenceName": "nvmBlockHistory",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(git-commit)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Block name (or substring)."
+            },
+            "maxVersions": {
+              "type": "number",
+              "description": "Newest N versions (default 20, cap 50)."
+            },
+            "maxChanges": {
+              "type": "number",
+              "description": "Max changed fields per version (default 40)."
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+      {
+        "name": "nvm_queryFields",
+        "displayName": "NVM: query fields",
+        "modelDescription": "Tabulate decoded field values across MANY blocks (one row per block, one column per field path such as 'Counter', 'Hist[].Reason', '$sequence', '$versions'), optionally filtered with a 'where' expression. Use to compare a field across a block family or to find blocks with suspicious values.",
+        "toolReferenceName": "nvmQueryFields",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(table)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "blocks": {
+              "type": "string",
+              "description": "Name globs/substrings, comma-separated (default: all)."
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Field paths / $meta to show (max 12)."
+            },
+            "where": {
+              "type": "string",
+              "description": "Optional filter expression, e.g. 'Counter > 100 && (Status & 0x08) != 0'."
+            },
+            "latestOnly": {
+              "type": "boolean",
+              "description": "Only newest instance per logical block (default true)."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max rows (default 100, cap 200)."
+            }
+          },
+          "required": [
+            "fields"
+          ]
+        }
+      },
+      {
+        "name": "nvm_evaluate",
+        "displayName": "NVM: evaluate expression",
+        "modelDescription": "Evaluate a whitelisted expression per block, or per block PAIR when 'other' is given (use self.X / other.Y). Supports field paths, $sequence/$offset/$length/$versions/$isLatest/$attr.<key>, comparisons, && || !, arithmetic, bit ops and exists()/count()/sum()/any()/all()/distinct()/min/max/abs/bit/contains. Use to verify logical or business relationships between fields and blocks.",
+        "toolReferenceName": "nvmEvaluate",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-operator)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "expr": {
+              "type": "string",
+              "description": "Expression, e.g. 'self.Counter == other.Counter' or '$sequence > 0 && exists(FreezeFrame)'."
+            },
+            "blocks": {
+              "type": "string",
+              "description": "Blocks to evaluate (globs/substrings, comma-separated)."
+            },
+            "other": {
+              "type": "string",
+              "description": "Optional partner blocks for self/other expressions."
+            },
+            "latestOnly": {
+              "type": "boolean",
+              "description": "Only newest instances (default true)."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max rows (default 100, cap 200)."
+            }
+          },
+          "required": [
+            "expr"
+          ]
+        }
+      },
+      {
+        "name": "nvm_correlateWrites",
+        "displayName": "NVM: correlate writes",
+        "modelDescription": "Quantify the WRITE relationship between two block families: for every write of A, the nearest write of B in write order — how many A writes are accompanied by B within 'within' steps, whether B comes before or after, and A writes with no B nearby (orphans).",
+        "toolReferenceName": "nvmCorrelateWrites",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(git-compare)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string",
+              "description": "Block A name glob/substring."
+            },
+            "b": {
+              "type": "string",
+              "description": "Block B name glob/substring."
+            },
+            "within": {
+              "type": "number",
+              "description": "Max write-rank distance (default 3)."
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
+        }
       }
     ],
     "submenus": [
@@ -744,6 +1169,10 @@
         {
           "command": "nvmStudio.nvm.reloadLayout",
           "when": "nvmStudio:isActive"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.open",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -786,6 +1215,26 @@
           "command": "nvmStudio.nvm.reloadLayout",
           "when": "view == nvmStudio.annotations",
           "group": "navigation@3"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.new",
+          "when": "view == nvmStudio.skills",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.checkRules",
+          "when": "view == nvmStudio.skills",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.reload",
+          "when": "view == nvmStudio.skills",
+          "group": "navigation@3"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.diagnostics",
+          "when": "view == nvmStudio.skills",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -817,6 +1266,11 @@
         {
           "command": "nvmStudio.nvm.openNoteNode",
           "when": "view == nvmStudio.annotations && viewItem == note"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.open",
+          "when": "view == nvmStudio.skills && viewItem == nvmSkill",
+          "group": "inline"
         }
       ],
       "editor/title": [

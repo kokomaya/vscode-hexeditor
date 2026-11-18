@@ -432,3 +432,12 @@
 	margin-bottom: 4px;
 }
 
+
+/* Field meaning contributed by a block skill (shown under the leaf). */
+.nvmDecodedDoc {
+	opacity: 0.7;
+	font-size: 0.85em;
+	font-style: italic;
+	white-space: normal;
+	padding-left: 8px;
+}

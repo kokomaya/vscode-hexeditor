@@ -8,6 +8,7 @@
  *
  *   <home>/engines/<id>/     engine packs (resolved by id)
  *   <home>/conf/             layout descriptors (*.nvmlayout.json)
+ *   <home>/skills/           NVM Studio skills (SKILL.md folders)
  *
  * `<home>` defaults to `<os home>/nvmstudio` and can be overridden with the
  * `NVMSTUDIO_HOME` environment variable.
@@ -45,4 +46,9 @@ export function nvmStudioEnginesUri(): vscode.Uri {
 /** `<home>/conf` as a Uri (layout descriptor install root). */
 export function nvmStudioConfUri(): vscode.Uri {
 	return vscode.Uri.joinPath(nvmStudioHomeUri(), "conf");
+}
+
+/** `<home>/skills` as a Uri (user skill root, beside engines/ and conf/). */
+export function nvmStudioSkillsUri(): vscode.Uri {
+	return vscode.Uri.joinPath(nvmStudioHomeUri(), "skills");
 }

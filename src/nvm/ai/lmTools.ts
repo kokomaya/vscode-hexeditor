@@ -14,76 +14,17 @@
  */
 
 import * as vscode from "vscode";
+import { registerAnalysisTools } from "./lmAnalysisTools";
+import { registerSkillTools } from "./lmSkillTools";
+import { getLmApi, guarded, hex, markdown, withSection } from "./lmToolKit";
 import {
 	AnnotationsSummary,
 	BlockSummary,
 	DecodedSummaryNode,
 	DumpOverview,
 	NvmCapabilities,
-	NvmCapabilityError,
 	Page,
 } from "./nvmCapabilities";
-
-const hex = (n: number) => `0x${n.toString(16).toUpperCase()}`;
-
-// Loose views of the LM Tools API (not present in the pinned @types/vscode).
-interface LmToolInvokeOptions<T> {
-	input?: T;
-}
-interface LmToolPrepareOptions<T> {
-	input?: T;
-}
-/** What `prepareInvocation` may return to drive VS Code's native confirmation UI. */
-interface LmToolPrepareResult {
-	invocationMessage?: string;
-	confirmationMessages?: { title: string; message: unknown };
-}
-interface LmTool<T> {
-	invoke(options: LmToolInvokeOptions<T>, token?: vscode.CancellationToken): Promise<unknown>;
-	prepareInvocation?(
-		options: LmToolPrepareOptions<T>,
-		token?: vscode.CancellationToken,
-	): LmToolPrepareResult | undefined;
-}
-interface LmApi {
-	registerTool<T>(name: string, tool: LmTool<T>): vscode.Disposable;
-}
-
-function getLmApi(): LmApi | undefined {
-	const lm = (vscode as unknown as { lm?: Partial<LmApi> }).lm;
-	return lm && typeof lm.registerTool === "function" ? (lm as LmApi) : undefined;
-}
-
-/** Build a text tool result using whichever result class the host provides. */
-function textResult(result: string): unknown {
-	const v = vscode as unknown as {
-		LanguageModelToolResult?: new (parts: unknown[]) => unknown;
-		LanguageModelTextPart?: new (s: string) => unknown;
-	};
-	if (v.LanguageModelToolResult && v.LanguageModelTextPart) {
-		return new v.LanguageModelToolResult([new v.LanguageModelTextPart(result)]);
-	}
-	// Fallback shape accepted by early proposals.
-	return { content: [{ kind: "text", value: result }] };
-}
-
-/** A MarkdownString for confirmation messages, or a plain string if unavailable. */
-function markdown(text: string): unknown {
-	const v = vscode as unknown as { MarkdownString?: new (s: string) => unknown };
-	return v.MarkdownString ? new v.MarkdownString(text) : text;
-}
-
-/** Wrap a capability call so {@link NvmCapabilityError} becomes a normal result. */
-async function guarded(fn: () => Promise<string> | string): Promise<unknown> {
-	try {
-		return textResult(await fn());
-	} catch (e) {
-		if (e instanceof NvmCapabilityError) {
-			return textResult(e.message);
-		}
-		return textResult(`NVM tool error: ${e instanceof Error ? e.message : String(e)}`);
-	}
-}
 
 function formatBlockPage(page: Page<BlockSummary>): string {
 	if (page.total === 0) {
@@ -112,7 +53,8 @@ function formatDecoded(nodes: DecodedSummaryNode[], depth: number): string {
 					? String(n.value)
 					: n.type;
 		const unit = n.unit ? ` ${n.unit}` : "";
-		out.push(`${indent}- ${n.name}: ${val}${unit} @ ${hex(n.offset)}`);
+		const meaning = n.meaning ? ` — ${n.meaning}` : "";
+		out.push(`${indent}- ${n.name}: ${val}${unit} @ ${hex(n.offset)}${meaning}`);
 		if (n.children?.length) {
 			out.push(formatDecoded(n.children, depth + 1));
 		}
@@ -188,21 +130,21 @@ export function registerLmTools(caps: NvmCapabilities): vscode.Disposable[] {
 	d.push(
 		lm.registerTool<{ query: string; limit?: number; offset?: number }>("nvm_searchBlocks", {
 			invoke: async options =>
-				guarded(() =>
-					formatBlockPage(
-						caps.searchBlocks(options.input?.query ?? "", {
-							limit: options.input?.limit,
-							offset: options.input?.offset,
-						}),
-					),
-				),
+				guarded(async () => {
+					const page = caps.searchBlocks(options.input?.query ?? "", {
+						limit: options.input?.limit,
+						offset: options.input?.offset,
+					});
+					const names = page.items.slice(0, 100).map(b => b.name ?? b.id);
+					return withSection(formatBlockPage(page), await caps.skills.knowledgeForNames(names));
+				}),
 		}),
 	);
 
 	d.push(
 		lm.registerTool<{ name: string }>("nvm_analyzeBlock", {
 			invoke: async options =>
-				guarded(() => {
+				guarded(async () => {
 					const b = caps.analyzeBlock(options.input?.name ?? "");
 					const fields = b.fields
 						.map(
@@ -215,7 +157,8 @@ export function registerLmTools(caps: NvmCapabilities): vscode.Disposable[] {
 					const rawLine =
 						b.raw !== undefined ? `\nRaw${b.rawTruncated ? " (truncated)" : ""}: ${b.raw}` : "";
 					const fieldsHdr = `Fields${b.fieldsTruncated ? " (truncated)" : ""}:`;
-					return `Block: ${b.name ?? b.id}\nOffset: ${hex(b.offset)}\nLength: ${b.length}${rawLine}\n${fieldsHdr}\n${fields || "  (none)"}`;
+					const text = `Block: ${b.name ?? b.id}\nOffset: ${hex(b.offset)}\nLength: ${b.length}${rawLine}\n${fieldsHdr}\n${fields || "  (none)"}`;
+					return withSection(text, await caps.skills.knowledgeForName(b.name ?? b.id, false));
 				}),
 		}),
 	);
@@ -223,16 +166,20 @@ export function registerLmTools(caps: NvmCapabilities): vscode.Disposable[] {
 	d.push(
 		lm.registerTool<{ name: string; maxDepth?: number; maxNodes?: number }>("nvm_getDecoded", {
 			invoke: async options =>
-				guarded(() => {
+				guarded(async () => {
 					const s = caps.getDecoded(options.input?.name ?? "", {
 						maxDepth: options.input?.maxDepth,
 						maxNodes: options.input?.maxNodes,
 					});
+					const knowledge = await caps.skills.knowledgeForName(s.block);
 					if (s.nodes.length === 0) {
-						return `Block "${s.block}" has no decoded structure (not bound to a struct).`;
+						return withSection(
+							`Block "${s.block}" has no decoded structure (not bound to a struct).`,
+							knowledge,
+						);
 					}
 					const trunc = s.truncated ? "\n(tree truncated — raise maxDepth/maxNodes for more)" : "";
-					return `Decoded ${s.block}:\n${formatDecoded(s.nodes, 0)}${trunc}`;
+					return withSection(`Decoded ${s.block}:\n${formatDecoded(s.nodes, 0)}${trunc}`, knowledge);
 				}),
 		}),
 	);
@@ -331,5 +278,7 @@ export function registerLmTools(caps: NvmCapabilities): vscode.Disposable[] {
 		}),
 	);
 
+	d.push(...registerSkillTools(lm, caps));
+	d.push(...registerAnalysisTools(lm, caps));
 	return d;
 }

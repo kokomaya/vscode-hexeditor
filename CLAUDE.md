@@ -108,7 +108,21 @@ One vendor-blind facade, `NvmCapabilities` (`src/nvm/ai/nvmCapabilities.ts`), ba
 - **Chat participant** `@nvm` (`chatParticipant.ts`, id `hexEditor.nvm`).
 - **Language Model Tools** (`lmTools.ts`) declared in `package.json` under `languageModelTools`
   (`nvm_listBlocks`, `nvm_searchBlocks`, `nvm_getDecoded`, `nvm_readBytes`, `nvm_createNote`,
-  `nvm_analyzeBlock`, `nvm_listAnnotations`, `nvm_exportReport`, `nvm_riskDetection`).
+  `nvm_analyzeBlock`, `nvm_listAnnotations`, `nvm_exportReport`, `nvm_riskDetection`, plus skill tools
+  `nvm_listSkills`/`nvm_useSkill`/`nvm_readSkillResource`/`nvm_searchKnowledge`/`nvm_checkRules` and
+  relational tools `nvm_timeline`/`nvm_blockHistory`/`nvm_correlateWrites`/`nvm_queryFields`/`nvm_evaluate`).
+
+`NvmCapabilities` composes two sub-facades: `caps.skills` (`skillCapabilities.ts`) and `caps.analysis`
+(`analysisCapabilities.ts`). Tool registration is split by domain (`lmTools.ts`, `lmSkillTools.ts`,
+`lmAnalysisTools.ts`, shared plumbing in `lmToolKit.ts`).
+
+### Skills
+Pure-data `SKILL.md` folders (`playbook` = how to investigate, `block` = what a block means + optional
+struct, field docs, `rules`, cross-block `relations`; `uses` composes skills). Kernel in
+`shared/nvm/skills/` (pure), generic relational analysis in `shared/nvm/analysis/`, vscode side in
+`src/nvm/skills/` (roots → loader → registry → decode pass / tree / commands). Block skills decode and
+document bound blocks in `hexEditorProvider.ts` before `setNvmBlocks`. Built-in vendor-free playbooks
+live in `skills/`; fill-in templates in `docs/features/skill-templates/`. See `docs/features/skills.md`.
 
 When adding an AI capability, extend `NvmCapabilities` so both surfaces get it, then declare the tool
 in `package.json`. See `docs/nvm-ai-capabilities.md`.

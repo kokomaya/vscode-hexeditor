@@ -54,6 +54,8 @@ import {
 } from "./nvm/layout";
 import { HookContext, HookResult, invalidateExternalEngine, isNodeHost, loadExternalEngine, loadExternalHook } from "./nvm/layout/externalEngine";
 import { getNvmLog } from "./nvm/nvmLog";
+import { applySkillsToBlocks } from "./nvm/skills/skillDecodePass";
+import { SkillRegistry } from "./nvm/skills/skillRegistry";
 import { ISearchRequest, LiteralSearchRequest, RegexSearchRequest } from "./searchRequest";
 import { flattenBuffers, getBaseName, getCorrectArrayBuffer, randomString } from "./util";
 
@@ -91,6 +93,8 @@ interface NvmLoadResult {
 	 * it finishes. Carries everything the background run needs.
 	 */
 	pendingHook?: { dir: string; config: LayoutConfig; input: LayoutInput };
+	/** Opaque layout identifiers (provider id, descriptor vendor/engine) for skill `appliesTo.layout`. */
+	layoutIds?: string[];
 }
 
 export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocument> {
@@ -101,6 +105,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		registry: HexEditorRegistry,
 		annotations: AnnotationService,
 		customViews: CustomViewService,
+		skills?: SkillRegistry,
 	): vscode.Disposable {
 		const provider = new HexEditorProvider(
 			context,
@@ -109,6 +114,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			registry,
 			annotations,
 			customViews,
+			skills,
 		);
 		const editor = vscode.window.registerCustomEditorProvider(
 			HexEditorProvider.viewType,
@@ -172,6 +178,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		private readonly _registry: HexEditorRegistry,
 		private readonly _annotations: AnnotationService,
 		private readonly _customViews: CustomViewService,
+		private readonly _skills?: SkillRegistry,
 	) {}
 
 	/** Lazily-created manager for installed external engine packs. */
@@ -399,6 +406,16 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			try {
 				const result = await this.tryLoadNvmBlocks(document, fsPath, dir);
 				const allBlocks = result?.resolved.blocks ?? [];
+				// Block skills decode/document bound blocks BEFORE anyone sees them, so
+				// the editor, inspector, tables, reports and AI share one enriched view.
+				if (this._skills && result) {
+					await applySkillsToBlocks(
+						this._skills,
+						document,
+						allBlocks,
+						result.layoutIds ?? [result.resolved.providerId],
+					);
+				}
 				this._registry.setNvmBlocks(document, allBlocks.length > 0 ? allBlocks : undefined);
 
 				// Staged push: some engines (e.g. Vector FEE V3) recover hundreds
@@ -628,7 +645,9 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			},
 		};
 		const resolved = resolveNvmBlocks(ctx);
-		return resolved ? { resolved } : undefined;
+		return resolved
+			? { resolved, layoutIds: [resolved.providerId, ...configs.map(c => c.vendor).filter(Boolean)] }
+			: undefined;
 	}
 
 	/**
@@ -738,6 +757,9 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		try {
 			const stat = await vscode.workspace.fs.stat(scriptUri);
 			const engine = await loadExternalEngine(scriptUri.fsPath, stat.mtime);
+			const layoutIds = [`external:${engine.id}`, engine.id, config.vendor, config.engine ?? ""].filter(
+				(x): x is string => !!x,
+			);
 			const blocks = engine.parse(input, config.options);
 			applyPalette(blocks, config.palette);
 			return {
@@ -746,6 +768,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 				// packs are immutable until re-installed.
 				engineScriptUri: config.engine ? undefined : scriptUri,
 				pendingHook,
+				layoutIds,
 			};
 		} catch (e) {
 			void vscode.window.showErrorMessage(

@@ -214,7 +214,24 @@ export interface NvmDecodedNode {
 	hex?: string;
 	/** For a bitfield: its width and bit offset within the backing scalar. */
 	bits?: { width: number; offset: number };
+	/**
+	 * Optional human documentation attached after decoding (e.g. by a block
+	 * skill's `fields` table). Purely descriptive — never affects the value.
+	 */
+	doc?: NvmFieldDoc;
 	children?: NvmDecodedNode[];
+}
+
+/** Field-level documentation merged onto a decoded node (see block skills). */
+export interface NvmFieldDoc {
+	/** What the field means in engineering terms. */
+	meaning?: string;
+	/** Unit hint when the decoder did not provide one. */
+	unit?: string;
+	/** Name of an enum (in the skill's catalog) that labels this field. */
+	enum?: string;
+	/** The knowledge source (skill name) this doc came from. */
+	source?: string;
 }
 
 /** Options for {@link decodeStructRich}. */

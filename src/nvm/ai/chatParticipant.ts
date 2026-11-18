@@ -13,6 +13,8 @@
  */
 
 import * as vscode from "vscode";
+import { preparePrompt } from "./chatPrompt";
+import { formatSkillLine } from "./lmSkillTools";
 import { NvmCapabilities } from "./nvmCapabilities";
 
 interface ChatApi {
@@ -53,12 +55,30 @@ async function buildContext(caps: NvmCapabilities): Promise<string> {
 	}
 }
 
-const SYSTEM_PROMPT =
-	"You are an assistant embedded in an AUTOSAR NVM hex-analysis tool. Answer using the " +
-	"provided dump context and the NVM tools. The context is only an aggregate summary — for " +
-	"EXACT counts of a block type call the nvm_describeDump tool (never guess from a truncated " +
-	"list); to find blocks by name/field/attribute call nvm_searchBlocks; to inspect one block " +
-	"call nvm_analyzeBlock / nvm_getDecoded. Be concise and technical.";
+/** Max tool-calling rounds per request (skill loading costs a round). */
+function maxRounds(): number {
+	const n = vscode.workspace.getConfiguration("nvmstudio").get<number>("nvm.chat.maxToolRounds", 8);
+	return Math.min(Math.max(1, Math.floor(n || 8)), 20);
+}
+
+/** `@nvm /skills`: what is installed, what binds to the active dump, what is broken. */
+async function renderSkillsOverview(caps: NvmCapabilities): Promise<string> {
+	if (!caps.skills.available) {
+		return "NVM skills are disabled (`nvmstudio.nvm.skills.mode` is `off`).";
+	}
+	const page = await caps.skills.listSkills({ limit: 100 });
+	const diags = (await caps.skills.diagnostics()).filter(d => d.severity !== "info");
+	const out = [`**${page.total} skill(s)** available:`, "", ...page.items.map(formatSkillLine)];
+	if (!vscode.workspace.isTrusted) {
+		out.push("", "_Workspace is untrusted: only user-home and built-in skills are loaded._");
+	}
+	if (diags.length) {
+		out.push("", `**${diags.length} problem(s)** (run *NVM: Show Skill Diagnostics*):`);
+		out.push(...diags.slice(0, 15).map(d => `- ${d.severity}: ${d.skill ?? ""} ${d.message}`));
+	}
+	out.push("", "Force a skill with `skill:<name>` in your question; disable auto skills with `/noskills`.");
+	return out.join("\n");
+}
 
 /**
  * Register the `@nvm` chat participant (when the API exists) plus the
@@ -70,7 +90,7 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 
 	if (chat) {
 		const handler = async (
-			request: { prompt: string; model?: unknown; toolInvocationToken?: unknown },
+			request: { prompt: string; command?: string; model?: unknown; toolInvocationToken?: unknown },
 			_context: unknown,
 			stream: {
 				markdown(v: string): void;
@@ -78,7 +98,20 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 			},
 			token: vscode.CancellationToken,
 		): Promise<void> => {
+			if (request.command === "skills") {
+				stream.markdown(await renderSkillsOverview(caps));
+				return;
+			}
 			const ctx = await buildContext(caps);
+			const prepared = await preparePrompt(caps, request.prompt, ctx, {
+				noSkills: request.command === "noskills",
+			});
+			for (const name of prepared.activated) {
+				stream.progress?.(`Using skill: ${name}`);
+			}
+			if (prepared.unknown.length) {
+				stream.markdown(`_Unknown skill(s): ${prepared.unknown.join(", ")} — see \`@nvm /skills\`._\n\n`);
+			}
 			const model = (request as { model?: LanguageModelLike }).model;
 			if (!model || typeof model.sendRequest !== "function") {
 				stream.markdown(
@@ -86,7 +119,7 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 				);
 				return;
 			}
-			const system = `${SYSTEM_PROMPT}\n\nCONTEXT:\n${ctx}`;
+			const system = prepared.system;
 			try {
 				// Preferred path: let the model iteratively call the #nvm* tools so it
 				// can fetch exact counts / drill into blocks. Falls back to a single
@@ -94,13 +127,13 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 				const usedTools = await runWithTools(
 					model,
 					system,
-					request.prompt,
+					prepared.prompt,
 					stream,
 					token,
 					request.toolInvocationToken,
 				);
 				if (!usedTools) {
-					const messages = buildMessages(system, request.prompt);
+					const messages = buildMessages(system, prepared.prompt);
 					const response = await model.sendRequest(messages, {}, token);
 					for await (const fragment of response.text) {
 						stream.markdown(fragment);
@@ -161,7 +194,7 @@ async function runWithTools(
 	model: LanguageModelLike,
 	system: string,
 	prompt: string,
-	stream: { markdown(v: string): void },
+	stream: { markdown(v: string): void; progress?(v: string): void },
 	token: vscode.CancellationToken,
 	toolInvocationToken: unknown,
 ): Promise<boolean> {
@@ -198,7 +231,7 @@ async function runWithTools(
 	}
 
 	const messages: unknown[] = [Msg.User(`${system}\n\n${prompt}`)];
-	const MAX_ROUNDS = 5;
+	const MAX_ROUNDS = maxRounds();
 	for (let round = 0; round < MAX_ROUNDS; round++) {
 		if (token.isCancellationRequested) {
 			return true;
@@ -226,6 +259,10 @@ async function runWithTools(
 		messages.push(Msg.Assistant(assistantParts));
 		const resultParts: unknown[] = [];
 		for (const call of toolCalls) {
+			if (call.name === "nvm_useSkill") {
+				const n = (call.input as { name?: string } | undefined)?.name;
+				stream.progress?.(`Using skill: ${n ?? "?"}`);
+			}
 			let resultText: string;
 			try {
 				const res = await lm.invokeTool(
@@ -241,6 +278,9 @@ async function runWithTools(
 		}
 		messages.push(Msg.User(resultParts));
 	}
+	stream.markdown(
+		`\n\n_Stopped after ${MAX_ROUNDS} tool rounds (setting \`nvmstudio.nvm.chat.maxToolRounds\`). Ask me to continue for more._`,
+	);
 	return true;
 }
 

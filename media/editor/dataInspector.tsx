@@ -399,7 +399,11 @@ const NvmDecodedRow: React.FC<{ node: NvmDecodedNode; depth: number; defaultOpen
 		const summary = formatNodeValue(node);
 		return (
 			<details className={style.nvmDecodedBranch} open={defaultOpen}>
-				<summary style={indent} onClick={reveal}>
+				<summary
+					style={indent}
+					onClick={reveal}
+					title={node.doc?.meaning ? `${node.doc.meaning}${node.doc.source ? ` — skill: ${node.doc.source}` : ""}` : undefined}
+				>
 					<span className={style.nvmDecodedName}>{node.name}</span>
 					<span className={style.nvmDecodedMeta}>
 						{summary || node.type}
@@ -418,11 +422,27 @@ const NvmDecodedRow: React.FC<{ node: NvmDecodedNode; depth: number; defaultOpen
 		);
 	}
 
+	const doc = node.doc;
 	return (
-		<div className={style.nvmDecodedLeaf} style={indent} onClick={reveal} title="Reveal bytes">
-			<span className={style.nvmDecodedName}>{node.name}</span>
-			<span className={style.nvmDecodedValue}>{formatNodeValue(node)}</span>
-		</div>
+		<>
+			<div
+				className={style.nvmDecodedLeaf}
+				style={indent}
+				onClick={reveal}
+				title={doc?.meaning ? `${doc.meaning}${doc.source ? ` — skill: ${doc.source}` : ""}` : "Reveal bytes"}
+			>
+				<span className={style.nvmDecodedName}>{node.name}</span>
+				<span className={style.nvmDecodedValue}>
+					{formatNodeValue(node)}
+					{!node.unit && doc?.unit ? ` ${doc.unit}` : ""}
+				</span>
+			</div>
+			{doc?.meaning && (
+				<div className={style.nvmDecodedDoc} style={{ paddingLeft: `${depth * 12 + 12}px` }}>
+					{doc.meaning}
+				</div>
+			)}
+		</>
 	);
 };
 

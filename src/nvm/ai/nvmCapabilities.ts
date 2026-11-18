@@ -32,6 +32,14 @@ import { HexDocument } from "../../hexDocument";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
 import { AnnotationService } from "../annotations/annotationService";
 import { buildActiveReport } from "../report/reportCommands";
+import { SkillRegistry } from "../skills/skillRegistry";
+import { ActiveDump } from "./activeDump";
+import { AnalysisCapabilities } from "./analysisCapabilities";
+import { clamp, NvmCapabilityError, Page } from "./capabilityTypes";
+import { SkillCapabilities } from "./skillCapabilities";
+
+export { NvmCapabilityError } from "./capabilityTypes";
+export type { Page } from "./capabilityTypes";
 
 // --- read limits (the single source of truth for how much data leaves the host) ---
 
@@ -54,19 +62,6 @@ const MAX_ANNOTATIONS = 200;
 const MAX_REPORT_CHARS = 40000;
 
 const hex = (n: number) => `0x${n.toString(16).toUpperCase()}`;
-
-/** A bounded, self-describing page so the model knows whether to fetch more. */
-export interface Page<T> {
-	items: T[];
-	/** Total matches before paging. */
-	total: number;
-	/** How many items this page returned. */
-	returned: number;
-	/** The offset this page started at. */
-	offset: number;
-	/** Whether more items exist beyond this page. */
-	hasMore: boolean;
-}
 
 export interface BlockSummary {
 	id: string;
@@ -106,6 +101,8 @@ export interface DecodedSummaryNode {
 	value?: number | string | boolean;
 	unit?: string;
 	enumLabel?: string;
+	/** Field meaning contributed by a block skill (`fields`). */
+	meaning?: string;
 	children?: DecodedSummaryNode[];
 }
 
@@ -180,17 +177,21 @@ export interface ResolvedNoteInput {
 	body: string;
 }
 
-/**
- * Raised for invalid capability input (bad range, missing anchor, empty note).
- * Tools catch it and surface `message` to the model as a normal tool result.
- */
-export class NvmCapabilityError extends Error {}
-
 export class NvmCapabilities {
+	/** Skill knowledge (index, activation, retrieval, rule checks) — composed, not inherited. */
+	public readonly skills: SkillCapabilities;
+	/** Relational analysis (timeline, versions, cross-block queries, expressions). */
+	public readonly analysis: AnalysisCapabilities;
+
 	constructor(
 		private readonly registry: HexEditorRegistry,
 		private readonly annotations: AnnotationService,
-	) {}
+		skillRegistry?: SkillRegistry,
+	) {
+		const dump = new ActiveDump(registry);
+		this.skills = new SkillCapabilities(dump, skillRegistry);
+		this.analysis = new AnalysisCapabilities(dump);
+	}
 
 	/** The active dump document, or throw a friendly error. */
 	private activeDoc(): HexDocument {
@@ -426,6 +427,7 @@ export class NvmCapabilities {
 					value: n.value,
 					unit: n.unit,
 					enumLabel: n.enumLabel,
+					meaning: n.doc?.meaning,
 				};
 				if (n.children?.length) {
 					if (depth + 1 < maxDepth) {
@@ -599,10 +601,6 @@ export class NvmCapabilities {
 		}
 		return { risks };
 	}
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-	return Math.min(hi, Math.max(lo, Math.floor(n)));
 }
 
 /** JSON.stringify that survives bigint and cyclic-ish values. */

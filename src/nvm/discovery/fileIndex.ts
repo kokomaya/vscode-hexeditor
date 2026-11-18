@@ -314,7 +314,7 @@ export function configuredRoots(): string[] {
 }
 
 /** Expand `${workspaceFolder}` / `${workspaceFolder:Name}` in a configured path. */
-function expandWorkspaceVars(raw: string): string {
+export function expandWorkspaceVars(raw: string): string {
 	const folders = vscode.workspace.workspaceFolders ?? [];
 	const first = folders[0]?.uri.fsPath ?? "";
 	let p = raw.replace(/\$\{workspaceFolder\}/g, first);

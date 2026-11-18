@@ -31,6 +31,8 @@ import { registerReselectDependency } from "./nvm/discovery/reselectCommand";
 import { registerEngineCommands } from "./nvm/engines/engineCommands";
 import { registerReportCommands } from "./nvm/report/reportCommands";
 import { registerReportPreview } from "./nvm/report/reportPanel";
+import { registerSkillCommands } from "./nvm/skills/skillCommands";
+import { SkillRegistry } from "./nvm/skills/skillRegistry";
 import { registerNvmStudioView } from "./nvm/ui/nvmStudioTree";
 import { showSelectBetweenOffsets } from "./selectBetweenOffsets";
 import StatusEditMode from "./statusEditMode";
@@ -195,7 +197,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(...registerReportCommands(registry, annotationService));
 	context.subscriptions.push(...registerReportPreview(registry, annotationService));
 	// One vendor-blind capability facade backs both AI surfaces (LM tools + chat).
-	const nvmCapabilities = new NvmCapabilities(registry, annotationService);
+	// Skills: external, pure-data knowledge (playbooks + block knowledge) shared by
+	// the decode pass, the AI surfaces and the Skills view.
+	const skillRegistry = new SkillRegistry(context.extensionUri);
+	context.subscriptions.push(skillRegistry);
+	const nvmCapabilities = new NvmCapabilities(registry, annotationService, skillRegistry);
+	context.subscriptions.push(...registerSkillCommands(skillRegistry, registry, nvmCapabilities.skills));
 	context.subscriptions.push(...registerLmTools(nvmCapabilities));
 	context.subscriptions.push(...registerChatParticipant(nvmCapabilities));
 	context.subscriptions.push(registerShowCapabilities(context));
@@ -224,6 +231,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			registry,
 			annotationService,
 			customViewService,
+			skillRegistry,
 		),
 	);
 }
