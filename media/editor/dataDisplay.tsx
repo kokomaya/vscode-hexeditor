@@ -40,6 +40,7 @@ import {
 import { DataInspectorAside } from "./dataInspector";
 import { useGlobalHandler, useLastAsyncRecoilValue, usePersistedState } from "./hooks";
 import * as select from "./state";
+import { HEX_SCOPE, useOwnsKeyboardRef } from "./panelScope";
 import { strings } from "./strings";
 import {
 	clamp,
@@ -232,6 +233,7 @@ export const DataDisplay: React.FC = () => {
 		ctx.unsavedRanges = unsavedRanges;
 	}, [allEditTimeline, unsavedEditIndex]);
 
+	const ownsKeyboard = useOwnsKeyboardRef(HEX_SCOPE);
 	useGlobalHandler(
 		"keydown",
 		(e: KeyboardEvent) => {
@@ -239,8 +241,9 @@ export const DataDisplay: React.FC = () => {
 			// scroll to a point where the 'focused' element is no longer rendered,
 			// but we still want to allow use of arrow keys.
 			if (
-				document.activeElement !== document.body &&
-				!containerRef.current?.contains(document.activeElement)
+				!ownsKeyboard.current ||
+				(document.activeElement !== document.body &&
+					!containerRef.current?.contains(document.activeElement))
 			) {
 				return;
 			}
@@ -333,7 +336,7 @@ export const DataDisplay: React.FC = () => {
 	});
 
 	useGlobalHandler<ClipboardEvent>("copy", () => {
-		if (ctx.focusedElement) {
+		if (ownsKeyboard.current && ctx.focusedElement) {
 			select.messageHandler.sendEvent({
 				type: MessageType.DoCopy,
 				selections: ctx.selection.map(r => [r.start, r.end]),

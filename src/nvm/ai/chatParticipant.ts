@@ -13,7 +13,9 @@
  */
 
 import * as vscode from "vscode";
+import { emitEvidenceButtons, nvmFollowups, recordingStream, registerChatUiCommands } from "./chatUi";
 import { preparePrompt } from "./chatPrompt";
+import { tryOpenChat } from "./openChat";
 import { formatSkillLine } from "./lmSkillTools";
 import { NvmCapabilities } from "./nvmCapabilities";
 
@@ -48,6 +50,10 @@ async function buildContext(caps: NvmCapabilities): Promise<string> {
 		for (const a of o.attributes.slice(0, 4)) {
 			const vals = a.values.slice(0, 8).map(v => `${v.key}(${v.count})`).join(", ");
 			lines.push("", `${a.label}: ${vals}`);
+		}
+		const focus = caps.ui.describeFocus();
+		if (focus) {
+			lines.push("", `Current selection: ${focus}`);
 		}
 		return lines.join("\n");
 	} catch (e) {
@@ -92,12 +98,15 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 		const handler = async (
 			request: { prompt: string; command?: string; model?: unknown; toolInvocationToken?: unknown },
 			_context: unknown,
-			stream: {
+			rawStream: {
 				markdown(v: string): void;
 				progress?(v: string): void;
+				button?(command: vscode.Command): void;
 			},
 			token: vscode.CancellationToken,
 		): Promise<void> => {
+			const recorder = recordingStream(rawStream);
+			const stream = recorder.stream;
 			if (request.command === "skills") {
 				stream.markdown(await renderSkillsOverview(caps));
 				return;
@@ -139,18 +148,25 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 						stream.markdown(fragment);
 					}
 				}
+				// Make the answer verifiable: one-click "show" buttons for mentioned blocks.
+				emitEvidenceButtons(rawStream, caps, recorder.text());
 			} catch (e) {
 				stream.markdown(`AI request failed: ${e instanceof Error ? e.message : String(e)}`);
 			}
 		};
 
 		try {
-			disposables.push(chat.createChatParticipant("nvmStudio.nvm", handler as never));
+			const participant = chat.createChatParticipant("nvmStudio.nvm", handler as never) as vscode.Disposable & {
+				followupProvider?: { provideFollowups(): { prompt: string; label: string }[] };
+			};
+			participant.followupProvider = { provideFollowups: () => nvmFollowups(caps) };
+			disposables.push(participant);
 		} catch (e) {
 			console.warn("NVM chat participant registration failed:", e);
 		}
 	}
 
+	disposables.push(...registerChatUiCommands(caps));
 	disposables.push(
 		vscode.commands.registerCommand("nvmStudio.nvm.openChat", async () => {
 			// Prefer opening Copilot Chat addressed to our participant; fall back to
@@ -304,22 +320,4 @@ function buildMessages(system: string, user: string): unknown[] {
 		return [v.LanguageModelChatMessage.User(`${system}\n\n${user}`)];
 	}
 	return [{ role: "user", content: `${system}\n\n${user}` }];
-}
-
-/**
- * Try to open the chat view with a starting query. Returns false if no API.
- * `isPartialQuery: true` places the text in the chat input box WITHOUT
- * auto-submitting it, so the user can edit the prompt before sending (VS Code
- * only calls `setInput`, not `acceptInput`, for a partial query).
- */
-async function tryOpenChat(query: string): Promise<boolean> {
-	for (const cmd of ["workbench.action.chat.open", "workbench.action.chat.openInSidebar"]) {
-		try {
-			await vscode.commands.executeCommand(cmd, { query, isPartialQuery: true });
-			return true;
-		} catch {
-			// try the next command id
-		}
-	}
-	return false;
 }

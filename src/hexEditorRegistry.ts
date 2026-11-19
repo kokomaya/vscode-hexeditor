@@ -4,6 +4,7 @@
 import * as vscode from "vscode";
 import { DiffExtensionHostMessageHandler } from "../shared/diffWorkerProtocol";
 import { HexDiffModel, HexDiffModelBuilder } from "../shared/hexDiffModel";
+import { NvmFocus } from "../shared/nvm/workbench/commands";
 import { ExtensionHostMessageHandler } from "../shared/protocol";
 import { parseQuery } from "../shared/util/uri";
 import { Disposable } from "./dispose";
@@ -20,6 +21,8 @@ export class HexEditorRegistry extends Disposable {
 	>();
 	private onChangeEmitter = new vscode.EventEmitter<HexDocument | undefined>();
 	private onNvmBlocksChangeEmitter = new vscode.EventEmitter<HexDocument>();
+	private readonly nvmFocus = new Map<HexDocument, NvmFocus>();
+	private onNvmFocusChangeEmitter = new vscode.EventEmitter<HexDocument>();
 	private _activeDocument?: HexDocument;
 
 	/**
@@ -52,6 +55,23 @@ export class HexEditorRegistry extends Disposable {
 	/** Get NVM blocks previously associated with a document. */
 	public getNvmBlocks(document: HexDocument): any[] {
 		return this.nvmBlocks.get(document) || [];
+	}
+
+	/** Fires when the user's NVM focus (block / field / byte) in a dump changes. */
+	public readonly onDidChangeNvmFocus = this.onNvmFocusChangeEmitter.event;
+
+	/** Record the focus reported by a dump's webview (chat context, status bar). */
+	public setNvmFocus(document: HexDocument, focus: NvmFocus | undefined) {
+		if (focus) {
+			this.nvmFocus.set(document, focus);
+		} else {
+			this.nvmFocus.delete(document);
+		}
+		this.onNvmFocusChangeEmitter.fire(document);
+	}
+
+	public getNvmFocus(document: HexDocument): NvmFocus | undefined {
+		return this.nvmFocus.get(document);
 	}
 
 	/**
@@ -103,6 +123,7 @@ export class HexEditorRegistry extends Disposable {
 				collection!.delete(messaging);
 				if (collection!.size === 0) {
 					this.docs.delete(document);
+					this.nvmFocus.delete(document);
 				}
 			},
 		};

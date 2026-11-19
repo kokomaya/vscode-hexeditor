@@ -5,6 +5,9 @@
 import { HexDecorator } from "./decorators";
 import { HexDocumentEditOp } from "./hexDocumentModel";
 import { NvmDecodedNode } from "./nvm/structRich";
+import { NvmFocus, WorkbenchCommand, WorkbenchRequest } from "./nvm/workbench/commands";
+import { WorkbenchLayout, WorkbenchMode } from "./nvm/workbench/layoutSchema";
+import { WorkbenchInitState } from "./nvm/workbench/presets";
 import { ISerializedEdits } from "./serialization";
 
 export const enum MessageType {
@@ -29,6 +32,7 @@ export const enum MessageType {
 	TriggerCopyAs,
 	SetNvmAnnotations,
 	SetNvmCustomViews,
+	WorkbenchCommand,
 	//#endregion
 	//#region from webview
 	ReadyRequest,
@@ -45,6 +49,10 @@ export const enum MessageType {
 	DoCopy,
 	NvmAnnotationCommand,
 	NvmCustomViewCommand,
+	WorkbenchStateChanged,
+	WorkbenchRequest,
+	NvmFocusChanged,
+	NvmAskAi,
 	//#endregion
 }
 
@@ -90,6 +98,10 @@ export interface ReadyResponseMessage {
 	isLargeFile: boolean;
 	editMode: HexDocumentEditOp.Insert | HexDocumentEditOp.Replace;
 	decorators: HexDecorator[];
+	/** NVM Studio UI mode (`nvmstudio.nvm.layoutMode`); classic = hex only. */
+	layoutMode?: WorkbenchMode;
+	/** Persisted workbench presets/overrides for this dump (workbench mode). */
+	workbench?: WorkbenchInitState;
 }
 
 /**
@@ -447,6 +459,40 @@ export interface TriggerCopyAsMessage {
 	format: CopyFormat;
 }
 
+/** Host → webview: drive the workbench (commands / AI). */
+export interface WorkbenchCommandMessage {
+	type: MessageType.WorkbenchCommand;
+	command: WorkbenchCommand;
+}
+
+/**
+ * Webview → host: the active preset changed and/or its user override changed.
+ * `override`: a layout = save as the preset's override; `null` = drop the
+ * override (reset); omitted = only the active preset changed.
+ */
+export interface WorkbenchStateChangedMessage {
+	type: MessageType.WorkbenchStateChanged;
+	presetId: string;
+	override?: WorkbenchLayout | null;
+}
+
+export interface WorkbenchRequestMessage {
+	type: MessageType.WorkbenchRequest;
+	request: WorkbenchRequest;
+}
+
+/** Webview → host: the user's current focus (block / field / byte) changed. */
+export interface NvmFocusChangedMessage {
+	type: MessageType.NvmFocusChanged;
+	focus: NvmFocus | undefined;
+}
+
+/** Webview → host: open the chat with a pre-filled (not sent) @nvm question. */
+export interface NvmAskAiMessage {
+	type: MessageType.NvmAskAi;
+	query: string;
+}
+
 export type ToWebviewMessage =
 	| ReadyResponseMessage
 	| ReadRangeResponseMessage
@@ -465,7 +511,8 @@ export type ToWebviewMessage =
 	| PopDisplayedOffsetMessage
 	| StashDisplayedOffsetMessage
 	| DeleteAcceptedMessage
-	| TriggerCopyAsMessage;
+	| TriggerCopyAsMessage
+	| WorkbenchCommandMessage;
 
 export interface OpenDocumentMessage {
 	type: MessageType.OpenDocument;
@@ -554,7 +601,11 @@ export type FromWebviewMessage =
 	| CopyMessage
 	| RequestDeletesMessage
 	| NvmAnnotationCommandMessage
-	| NvmCustomViewCommandMessage;
+	| NvmCustomViewCommandMessage
+	| WorkbenchStateChangedMessage
+	| WorkbenchRequestMessage
+	| NvmFocusChangedMessage
+	| NvmAskAiMessage;
 
 export type ExtensionHostMessageHandler = MessageHandler<ToWebviewMessage, FromWebviewMessage>;
 export type WebviewMessageHandler = MessageHandler<FromWebviewMessage, ToWebviewMessage>;

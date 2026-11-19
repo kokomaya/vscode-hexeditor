@@ -81,9 +81,41 @@ export const messageHandler = new MessageHandler<FromWebviewMessage, ToWebviewMe
 
 window.addEventListener("message", ev => messageHandler.handleMessage(ev.data));
 
+/**
+ * Local "reveal an NVM offset" bus. Both the extension's `RevealNvmOffset`
+ * message and in-webview panels (workbench table / tree) go through
+ * {@link revealNvm}, so a table click behaves exactly like a host-driven jump
+ * without a round-trip through the extension.
+ */
+type RevealListener = (offset: number) => void;
+const revealListeners = new Set<RevealListener>();
+
+/** Subscribe to NVM reveals; returns an unsubscribe function. */
+export const onRevealNvm = (listener: RevealListener): (() => void) => {
+	revealListeners.add(listener);
+	return () => {
+		revealListeners.delete(listener);
+	};
+};
+
+/** Scroll to, select and flash the NVM unit owning `offset`. */
+export const revealNvm = (offset: number): void => {
+	for (const listener of [...revealListeners]) {
+		listener(offset);
+	}
+};
+
+registerHandler(MessageType.RevealNvmOffset, msg => revealNvm(msg.offset));
+
 const readyQuery = selector({
 	key: "ready",
 	get: () => messageHandler.sendRequest<ReadyResponseMessage>({ type: MessageType.ReadyRequest }),
+});
+
+/** True while a workbench Inspector panel is open (the hex grid then hides its own). */
+export const inspectorDockedAtom = atom<boolean>({
+	key: "inspectorDocked",
+	default: false,
 });
 
 /**
@@ -96,7 +128,9 @@ export const dataInspectorLocation = selector({
 	get: ({ get }) => {
 		const settings = get(editorSettings);
 		const d = get(dimensions);
-		if (settings.inspectorType === InspectorLocation.Sidebar) {
+		// When the workbench hosts the inspector as its own panel, the hex grid
+		// must not render an aside/hover copy ("Sidebar" = shown elsewhere).
+		if (settings.inspectorType === InspectorLocation.Sidebar || get(inspectorDockedAtom)) {
 			return InspectorLocation.Sidebar;
 		}
 
@@ -114,6 +148,18 @@ export const dataInspectorLocation = selector({
 export const isReadonly = selector({
 	key: "isReadonly",
 	get: ({ get }) => get(readyQuery).isReadonly,
+});
+
+/** NVM Studio UI mode: "workbench" (dock layout) unless the user chose classic. */
+export const layoutMode = selector({
+	key: "layoutMode",
+	get: ({ get }) => get(readyQuery).layoutMode ?? "workbench",
+});
+
+/** Persisted workbench presets / overrides handed over on open. */
+export const workbenchInitState = selector({
+	key: "workbenchInitState",
+	get: ({ get }) => get(readyQuery).workbench,
 });
 
 export const codeSettings = selector({
@@ -229,9 +275,7 @@ export const selectedNvmBlockAtom = atom<NvmBlockInfo | undefined>({
 		fx => {
 			// An NVM panel jump selects the block owning the target byte, so the data
 			// inspector decodes it immediately (mirrors a real byte click).
-			registerHandler(MessageType.RevealNvmOffset, msg => {
-				fx.setSelf(findNvmFieldAt(msg.offset)?.block);
-			});
+			return onRevealNvm(offset => fx.setSelf(findNvmFieldAt(offset)?.block));
 		},
 	],
 });
@@ -246,9 +290,7 @@ export const selectedNvmUnitAtom = atom<string | undefined>({
 	default: undefined,
 	effects_UNSTABLE: [
 		fx => {
-			registerHandler(MessageType.RevealNvmOffset, msg => {
-				fx.setSelf(findNvmFieldAt(msg.offset)?.unit);
-			});
+			return onRevealNvm(offset => fx.setSelf(findNvmFieldAt(offset)?.unit));
 		},
 	],
 });
@@ -410,10 +452,10 @@ export const offset = atom({
 				fx.setSelf(startOfRowContainingByte(msg.offset, s));
 			});
 
-			registerHandler(MessageType.RevealNvmOffset, msg => {
+			return onRevealNvm(target => {
 				const s = fx.getLoadable(columnWidth).getValue();
-				vscode.setState({ ...vscode.getState(), offset: msg.offset });
-				fx.setSelf(startOfRowContainingByte(msg.offset, s));
+				vscode.setState({ ...vscode.getState(), offset: target });
+				fx.setSelf(startOfRowContainingByte(target, s));
 			});
 		},
 	],

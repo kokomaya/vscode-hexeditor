@@ -5,7 +5,7 @@ import { HexDocumentEdit } from "../../shared/hexDocumentModel";
 import { MessageType } from "../../shared/protocol";
 import { Range, RangeDirection, getRangeSelectionsFromStack } from "../../shared/util/range";
 import _style from "./dataDisplayContext.css";
-import { getWebviewState, messageHandler, registerHandler, setWebviewState } from "./state";
+import { getWebviewState, messageHandler, onRevealNvm, registerHandler, setWebviewState } from "./state";
 import { throwOnUndefinedAccessInDev } from "./util";
 
 const style = throwOnUndefinedAccessInDev(_style);
@@ -302,13 +302,13 @@ export class DisplayContext {
 			this.setSelectionRanges([Range.inclusive(msg.startingOffset, msg.endingOffset)]);
 		});
 
-		registerHandler(MessageType.RevealNvmOffset, msg => {
+		onRevealNvm(offset => {
 			// NVM panel jump: replicate a real byte click (focus + select drives the
 			// data inspector and the visible cursor), then flash to draw the eye. The
-			// scroll + block/unit selection are handled by the `state.ts` handlers.
-			this.focusedElement = new FocusedElement(false, msg.offset);
-			this.setSelectionRanges([Range.single(msg.offset)]);
-			this.flash(msg.offset);
+			// scroll + block/unit selection are handled by the `state.ts` listeners.
+			this.focusedElement = new FocusedElement(false, offset);
+			this.setSelectionRanges([Range.single(offset)]);
+			this.flash(offset);
 		});
 
 		registerHandler(MessageType.TriggerCopyAs, msg => {

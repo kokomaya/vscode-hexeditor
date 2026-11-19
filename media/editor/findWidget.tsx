@@ -25,6 +25,7 @@ import { FocusedElement, dataCellCls, useDisplayContext } from "./dataDisplayCon
 import _style from "./findWidget.css";
 import { usePersistedState } from "./hooks";
 import * as select from "./state";
+import { HEX_SCOPE, useOwnsKeyboardRef } from "./panelScope";
 import { strings } from "./strings";
 import { clsx, hexDecode, isHexString, parseHexDigit, throwOnUndefinedAccessInDev } from "./util";
 import { VsIconButton, VsIconCheckbox, VsProgressIndicator, VsTextFieldGroup } from "./vscodeUi";
@@ -166,8 +167,12 @@ export const FindWidget: React.FC = () => {
 		[],
 	);
 
+	const ownsKeyboard = useOwnsKeyboardRef(HEX_SCOPE);
 	useEffect(() => {
 		const l = (evt: KeyboardEvent) => {
+			if (!ownsKeyboard.current) {
+				return; // another workbench panel (e.g. the table) handles its own Ctrl+F
+			}
 			if ((evt.key === "f" || evt.key === "F") && (evt.metaKey || evt.ctrlKey)) {
 				setVisible(true);
 				previouslyFocusedElement.current = ctx.focusedElement;

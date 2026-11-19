@@ -1,0 +1,59 @@
+.emptyState {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	height: 100%;
+	padding: 16px;
+	box-sizing: border-box;
+	text-align: center;
+	font-family: var(--vscode-font-family);
+	color: var(--vscode-descriptionForeground);
+}
+
+.title {
+	font-size: 1.1em;
+	color: var(--vscode-foreground);
+}
+
+.message {
+	max-width: 420px;
+	line-height: 1.4;
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	justify-content: center;
+	margin-top: 4px;
+}
+
+.button,
+.primaryButton {
+	font-family: inherit;
+	font-size: inherit;
+	padding: 4px 10px;
+	border-radius: 2px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	cursor: pointer;
+}
+
+.button {
+	color: var(--vscode-button-secondaryForeground);
+	background: var(--vscode-button-secondaryBackground);
+}
+
+.button:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.primaryButton {
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+}
+
+.primaryButton:hover {
+	background: var(--vscode-button-hoverBackground);
+}

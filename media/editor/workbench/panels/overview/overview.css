@@ -1,0 +1,126 @@
+.overview {
+	height: 100%;
+	overflow: auto;
+	padding: 10px 14px;
+	box-sizing: border-box;
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+	color: var(--vscode-foreground);
+}
+
+.tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+	gap: 8px;
+	margin-bottom: 14px;
+}
+
+.tile {
+	padding: 8px 10px;
+	border-radius: 4px;
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.tileValue {
+	font-size: 1.5em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.tileLabel {
+	opacity: 0.75;
+	font-size: 0.9em;
+}
+
+.section {
+	margin-bottom: 14px;
+}
+
+.section h3 {
+	margin: 0 0 6px;
+	font-size: 0.85em;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.8;
+}
+
+.questions {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: flex-start;
+}
+
+.question {
+	font-family: inherit;
+	font-size: inherit;
+	text-align: left;
+	padding: 4px 8px;
+	border-radius: 3px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	color: var(--vscode-button-secondaryForeground);
+	background: var(--vscode-button-secondaryBackground);
+	cursor: pointer;
+}
+
+.question:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.list {
+	margin: 0;
+	padding-left: 18px;
+}
+
+.muted {
+	opacity: 0.7;
+}
+
+.linkButton {
+	font-family: inherit;
+	font-size: inherit;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	cursor: pointer;
+	text-align: left;
+}
+
+.linkButton:hover {
+	text-decoration: underline;
+}
+
+.barRow {
+	display: grid;
+	grid-template-columns: minmax(80px, 30%) 1fr 48px;
+	align-items: center;
+	gap: 8px;
+	height: 20px;
+}
+
+.barLabel {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.barTrack {
+	height: 8px;
+	border-radius: 4px;
+	background: var(--vscode-editorWidget-background);
+	overflow: hidden;
+}
+
+.bar {
+	display: block;
+	height: 100%;
+	background: var(--vscode-charts-blue, var(--vscode-focusBorder));
+}
+
+.barValue {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.8;
+}

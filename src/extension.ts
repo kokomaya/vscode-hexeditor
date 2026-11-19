@@ -34,6 +34,9 @@ import { registerReportPreview } from "./nvm/report/reportPanel";
 import { registerSkillCommands } from "./nvm/skills/skillCommands";
 import { SkillRegistry } from "./nvm/skills/skillRegistry";
 import { registerNvmStudioView } from "./nvm/ui/nvmStudioTree";
+import { WorkbenchHost } from "./nvm/workbench/workbenchHost";
+import { registerWorkbenchCommands } from "./nvm/workbench/workbenchCommands";
+import { NvmFocusStatusBar } from "./nvm/workbench/focusStatusBar";
 import { showSelectBetweenOffsets } from "./selectBetweenOffsets";
 import StatusEditMode from "./statusEditMode";
 import StatusFocus from "./statusFocus";
@@ -201,7 +204,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	// the decode pass, the AI surfaces and the Skills view.
 	const skillRegistry = new SkillRegistry(context.extensionUri);
 	context.subscriptions.push(skillRegistry);
-	const nvmCapabilities = new NvmCapabilities(registry, annotationService, skillRegistry);
+	// The NVM workbench (dock layout inside the editor) — host side of layouts / focus / ask-AI.
+	const workbenchHost = new WorkbenchHost(context, registry);
+	context.subscriptions.push(...registerWorkbenchCommands(registry, workbenchHost));
+	context.subscriptions.push(new NvmFocusStatusBar(registry));
+	const nvmCapabilities = new NvmCapabilities(registry, annotationService, skillRegistry, workbenchHost);
 	context.subscriptions.push(...registerSkillCommands(skillRegistry, registry, nvmCapabilities.skills));
 	context.subscriptions.push(...registerLmTools(nvmCapabilities));
 	context.subscriptions.push(...registerChatParticipant(nvmCapabilities));
@@ -232,6 +239,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			annotationService,
 			customViewService,
 			skillRegistry,
+			workbenchHost,
 		),
 	);
 }

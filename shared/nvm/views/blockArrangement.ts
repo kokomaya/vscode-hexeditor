@@ -10,7 +10,7 @@
  * `identity`) are read; nothing vendor-specific.
  */
 
-import { NvmBlockInfo } from "../../../shared/protocol";
+import { NvmBlockInfo } from "../../protocol";
 import { BlockNode, blockLabel } from "./blockTreeModel";
 
 /** A named strategy that arranges blocks into a display tree. */

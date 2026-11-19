@@ -14,8 +14,8 @@ import * as vscode from "vscode";
 import { NvmBlockInfo } from "../../../shared/protocol";
 import { HexDocument } from "../../hexDocument";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
-import { arrangementById } from "./blockArrangement";
-import { blockDescription, blockLabel, BlockNode, hexOffset } from "./blockTreeModel";
+import { arrangementById } from "../../../shared/nvm/views/blockArrangement";
+import { blockDescription, blockLabel, BlockNode, hexOffset } from "../../../shared/nvm/views/blockTreeModel";
 import { BlockViewConfig } from "./columnConfig";
 
 export class NvmBlocksTree implements vscode.TreeDataProvider<BlockNode> {

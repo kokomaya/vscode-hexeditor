@@ -1,0 +1,241 @@
+/* Workbench shell ------------------------------------------------------- */
+
+.workbench {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+	color: var(--vscode-foreground);
+	background: var(--vscode-editor-background);
+}
+
+.dockHost {
+	flex: 1;
+	min-height: 0;
+	position: relative;
+}
+
+/* Map dockview's theme variables onto the active VS Code theme. */
+.dockHost :global(.dockview-theme-vs) {
+	color-scheme: normal;
+	--dv-group-view-background-color: var(--vscode-editor-background);
+	--dv-tabs-and-actions-container-background-color: var(--vscode-editorGroupHeader-tabsBackground);
+	--dv-tabs-and-actions-container-font-size: var(--vscode-font-size);
+	--dv-tabs-and-actions-container-height: 28px;
+	--dv-activegroup-visiblepanel-tab-background-color: var(--vscode-tab-activeBackground);
+	--dv-activegroup-hiddenpanel-tab-background-color: var(--vscode-tab-inactiveBackground);
+	--dv-inactivegroup-visiblepanel-tab-background-color: var(
+		--vscode-tab-unfocusedActiveBackground,
+		var(--vscode-tab-activeBackground)
+	);
+	--dv-inactivegroup-hiddenpanel-tab-background-color: var(--vscode-tab-inactiveBackground);
+	--dv-tab-divider-color: var(--vscode-tab-border, transparent);
+	--dv-activegroup-visiblepanel-tab-color: var(--vscode-tab-activeForeground);
+	--dv-activegroup-hiddenpanel-tab-color: var(--vscode-tab-inactiveForeground);
+	--dv-inactivegroup-visiblepanel-tab-color: var(
+		--vscode-tab-unfocusedActiveForeground,
+		var(--vscode-tab-activeForeground)
+	);
+	--dv-inactivegroup-hiddenpanel-tab-color: var(
+		--vscode-tab-unfocusedInactiveForeground,
+		var(--vscode-tab-inactiveForeground)
+	);
+	--dv-separator-border: var(--vscode-editorGroup-border, var(--vscode-panel-border, transparent));
+	--dv-paneview-header-border-color: var(--vscode-panel-border, transparent);
+	--dv-drag-over-background-color: var(--vscode-editorGroup-dropBackground, rgba(83, 89, 93, 0.5));
+	--dv-active-sash-color: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+	--dv-icon-hover-background-color: var(--vscode-toolbar-hoverBackground);
+	--dv-context-menu-background-color: var(--vscode-menu-background);
+	--dv-context-menu-color: var(--vscode-menu-foreground);
+	--dv-overlay-z-index: 50;
+}
+
+/* Toolbar ---------------------------------------------------------------- */
+
+.toolbar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 8px;
+	flex-shrink: 0;
+	border-bottom: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border, transparent));
+	background: var(--vscode-editorGroupHeader-tabsBackground);
+}
+
+.presetLabel {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	opacity: 0.9;
+}
+
+.presetSelect {
+	padding: 2px 4px;
+	color: var(--vscode-dropdown-foreground);
+	background: var(--vscode-dropdown-background);
+	border: 1px solid var(--vscode-dropdown-border, transparent);
+	font-family: inherit;
+	font-size: inherit;
+}
+
+.modified {
+	color: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
+	font-size: 0.9em;
+	white-space: nowrap;
+}
+
+.toolbarAnchor {
+	position: relative;
+}
+
+.spacer {
+	flex: 1;
+}
+
+.textButton,
+.iconButton {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-family: inherit;
+	font-size: inherit;
+	padding: 2px 6px;
+	color: var(--vscode-foreground);
+	background: transparent;
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.textButton svg,
+.iconButton svg {
+	fill: currentColor;
+	width: 16px;
+	height: 16px;
+}
+
+.textButton:hover:not(:disabled),
+.iconButton:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.textButton:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.iconButton[aria-pressed="true"] {
+	background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+/* View library ----------------------------------------------------------- */
+
+.viewLibrary {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	z-index: 200;
+	min-width: 280px;
+	padding: 4px;
+	display: flex;
+	flex-direction: column;
+	background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+	color: var(--vscode-menu-foreground, var(--vscode-foreground));
+	border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, transparent));
+	border-radius: 4px;
+	box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+
+.viewLibraryItem {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 6px 8px;
+	text-align: left;
+	font-family: inherit;
+	font-size: inherit;
+	color: inherit;
+	background: transparent;
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.viewLibraryItem:hover:not(:disabled) {
+	background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+	color: var(--vscode-menu-selectionForeground, inherit);
+}
+
+.disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.viewLibraryIcon {
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
+	margin-top: 1px;
+	fill: currentColor;
+}
+
+.viewLibraryText {
+	display: flex;
+	flex-direction: column;
+}
+
+.viewLibraryTitle {
+	font-weight: 600;
+}
+
+.viewLibraryHint {
+	opacity: 0.75;
+	font-size: 0.92em;
+}
+
+/* Panels ----------------------------------------------------------------- */
+
+.panelRoot {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	position: relative;
+}
+
+.scrollPanel {
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	box-sizing: border-box;
+}
+
+.panelError {
+	padding: 12px;
+	color: var(--vscode-errorForeground);
+}
+
+.emptyOverlay {
+	position: absolute;
+	inset: 0;
+	z-index: 10;
+	background: var(--vscode-editor-background);
+}
+
+.groupAction {
+	height: 100%;
+	padding: 0 8px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	opacity: 0.7;
+}
+
+.groupAction:hover {
+	opacity: 1;
+	background: var(--vscode-toolbar-hoverBackground);
+}

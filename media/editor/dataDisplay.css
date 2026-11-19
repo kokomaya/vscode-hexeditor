@@ -205,7 +205,7 @@
  * viewport and let it scroll on its own.
  */
 .dataInspectorWrap {
-	max-height: calc(100vh - 40px);
+	max-height: calc(var(--hex-panel-height, 100vh) - 40px);
 	overflow-y: auto;
 	overflow-x: hidden;
 	/* Reserve room for the native scrollbar so rows aren't clipped under it. */

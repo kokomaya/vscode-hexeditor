@@ -129,7 +129,10 @@ build({
 				"process.env.NODE_ENV": defineProd ? '"production"' : '"development"',
 			}
 		: undefined,
-	plugins: [svgr(), css({ v2: true, filter: /\.css$/i })],
+	// Our own .css files (under media/) are CSS modules; third-party stylesheets
+	// (e.g. dockview) must stay global, otherwise their class names get
+	// rewritten and break. (esbuild filters are Go regexps: no lookahead.)
+	plugins: [svgr(), css({ v2: true, filter: /\Wmedia\W.*\.css$/i })],
 });
 
 // Ship the reference engine pack manifest next to its built entry so the engine

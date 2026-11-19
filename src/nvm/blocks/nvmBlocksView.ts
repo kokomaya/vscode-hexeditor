@@ -10,8 +10,8 @@
 
 import * as vscode from "vscode";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
-import { ARRANGEMENTS, arrangementById } from "./blockArrangement";
-import { discoverAttributeKeys } from "./blockTreeModel";
+import { ARRANGEMENTS, arrangementById } from "../../../shared/nvm/views/blockArrangement";
+import { discoverAttributeKeys } from "../../../shared/nvm/views/blockTreeModel";
 import { BlockViewConfig } from "./columnConfig";
 import { NvmBlocksTree } from "./nvmBlocksTree";
 

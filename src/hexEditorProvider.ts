@@ -56,6 +56,7 @@ import { HookContext, HookResult, invalidateExternalEngine, isNodeHost, loadExte
 import { getNvmLog } from "./nvm/nvmLog";
 import { applySkillsToBlocks } from "./nvm/skills/skillDecodePass";
 import { SkillRegistry } from "./nvm/skills/skillRegistry";
+import { WorkbenchHost } from "./nvm/workbench/workbenchHost";
 import { ISearchRequest, LiteralSearchRequest, RegexSearchRequest } from "./searchRequest";
 import { flattenBuffers, getBaseName, getCorrectArrayBuffer, randomString } from "./util";
 
@@ -106,6 +107,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		annotations: AnnotationService,
 		customViews: CustomViewService,
 		skills?: SkillRegistry,
+		workbench?: WorkbenchHost,
 	): vscode.Disposable {
 		const provider = new HexEditorProvider(
 			context,
@@ -115,6 +117,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			annotations,
 			customViews,
 			skills,
+			workbench,
 		);
 		const editor = vscode.window.registerCustomEditorProvider(
 			HexEditorProvider.viewType,
@@ -179,6 +182,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		private readonly _annotations: AnnotationService,
 		private readonly _customViews: CustomViewService,
 		private readonly _skills?: SkillRegistry,
+		private readonly _workbench?: WorkbenchHost,
 	) {}
 
 	/** Lazily-created manager for installed external engine packs. */
@@ -1417,6 +1421,9 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		document: HexDocument,
 		message: FromWebviewMessage,
 	): Promise<undefined | ToWebviewMessage> {
+		if (this._workbench?.handleMessage(messaging, document, message)) {
+			return;
+		}
 		switch (message.type) {
 			// If it's a packet request
 			case MessageType.ReadyRequest:
@@ -1442,6 +1449,8 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 					isReadonly: document.isReadonly,
 					editMode: document.editMode,
 					decorators: await document.readDecorators(),
+					layoutMode: this._workbench?.layoutMode() ?? "classic",
+					workbench: this._workbench?.initState(document),
 				};
 			case MessageType.SetSelectedCount:
 				document.selectionState = message;

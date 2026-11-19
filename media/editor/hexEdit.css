@@ -1,17 +1,25 @@
+/*
+ * The hex panel fills its own container (the window in classic mode, a dock
+ * panel in the workbench) instead of assuming it owns the whole viewport.
+ */
 .container {
+	position: relative;
 	display: flex;
 	flex-direction: column;
-	width: 100vw;
-	height: 100vh;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
 }
 
 :global(body) {
 	margin: 0;
 	padding: 0;
+	height: 100%;
 	font-size: var(--vscode-editor-font-size);
 }
 
 :global(html) {
 	padding: 0;
+	height: 100%;
 	overflow: hidden;
 }

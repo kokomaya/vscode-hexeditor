@@ -8,7 +8,7 @@
  * same model can back both the native tree and the (later) webview table.
  */
 
-import { NvmAttribute, NvmBlockInfo } from "../../../shared/protocol";
+import { NvmAttribute, NvmBlockInfo } from "../../protocol";
 
 /** A node in a Blocks tree: either a grouping bucket or a single block. */
 export type BlockNode =

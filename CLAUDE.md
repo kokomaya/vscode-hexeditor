@@ -103,6 +103,16 @@ lives in adapters/engines/descriptors. See `docs/nvm-layout-providers.md` and
   attribute. State/handlers are in `media/editor/state.ts` (the `SetNvmBlocks` handler is registered
   eagerly at module load to avoid a startup race).
 
+### Workbench (dock layout inside the editor webview)
+`nvmstudio.nvm.layoutMode` = `workbench` (default) | `classic`. `media/editor/app.tsx` picks
+`HexPanel` (classic) or `workbench/workbench.tsx` (dockview-react). Panels come only from the view
+registry (`workbench/registry.ts`, registered in `workbench/builtinViews.ts`); dockview's format is
+confined to `workbench/layoutConverter.ts` + `workbenchController.ts`. Layout file format, presets
+and normalization are pure in `shared/nvm/workbench/`; table/tree/summary models in
+`shared/nvm/views/`. Host side: `src/nvm/workbench/` (persistence, messages, commands, focus status
+bar). Hex shortcuts are scoped via `media/editor/panelScope.ts`; context menus via
+`data-vscode-context` `webviewSection`. Status + deviations: `docs/refinement/new_ui_design_plan.md` §7.
+
 ### AI surfaces
 One vendor-blind facade, `NvmCapabilities` (`src/nvm/ai/nvmCapabilities.ts`), backs both:
 - **Chat participant** `@nvm` (`chatParticipant.ts`, id `hexEditor.nvm`).

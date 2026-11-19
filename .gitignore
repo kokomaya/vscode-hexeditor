@@ -9,3 +9,4 @@ dist/web
 .github/prompts
 
 tmp/*
+docs/refinement/*

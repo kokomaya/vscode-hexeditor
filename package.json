@@ -7,7 +7,7 @@
   "publisher": "kokomaya",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.89.0-insider"
+    "vscode": "^1.95.0"
   },
   "categories": [
     "Other"
@@ -100,6 +100,19 @@
             "type": "boolean",
             "default": true,
             "description": "Master switch for NVM layout engines. When a layout descriptor (`*.nvmlayout.json`) declares an `engineScript`/`engine`, it is executed to parse the dump — but only in the desktop extension host, in a trusted workspace, and after a one-time per-file confirmation. Set to `false` to disable engines entirely for locked-down environments."
+          },
+          "nvmstudio.nvm.layoutMode": {
+            "type": "string",
+            "enum": [
+              "workbench",
+              "classic"
+            ],
+            "enumDescriptions": [
+              "NVM workbench: Blocks table, Hex, Inspector, Overview, Tree and Annotations as freely arrangeable panels inside the editor, with built-in layout presets.",
+              "Classic: the hex editor only (structure views stay in the NVM Studio sidebar)."
+            ],
+            "default": "workbench",
+            "description": "How an NVM dump is presented in the editor. Reopen the dump after changing this setting."
           },
           "nvmstudio.nvm.annotationStorage": {
             "type": "string",
@@ -376,6 +389,36 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "nvmStudio.nvm.askAboutBlock",
+        "category": "NVM",
+        "title": "Ask @nvm About This Block",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "nvmStudio.nvm.askAboutSelection",
+        "category": "NVM",
+        "title": "Ask @nvm About This",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "nvmStudio.workbench.selectLayout",
+        "category": "NVM",
+        "title": "Workbench: Select Layout…",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "nvmStudio.workbench.resetLayout",
+        "category": "NVM",
+        "title": "Workbench: Reset Layout",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "nvmStudio.workbench.showView",
+        "category": "NVM",
+        "title": "Workbench: Open View…",
+        "icon": "$(add)"
+      },
+      {
         "command": "nvmStudio.nvm.showCapabilities",
         "category": "NVM",
         "title": "Show Capabilities",
@@ -484,7 +527,8 @@
         {
           "type": "webview",
           "id": "nvmStudio.nvmBlocksTable",
-          "name": "Blocks Table"
+          "name": "Blocks Table",
+          "when": "config.nvmstudio.nvm.layoutMode == classic"
         },
         {
           "type": "webview",
@@ -521,6 +565,131 @@
       }
     ],
     "languageModelTools": [
+      {
+        "name": "nvm_reveal",
+        "displayName": "NVM: reveal in editor",
+        "modelDescription": "Show a block (by name or id) or a byte offset to the user: scrolls the hex view, selects and highlights the owning block, and syncs the Blocks table / Inspector. Use it whenever you point the user at a block or address so they can verify your evidence. View-only.",
+        "toolReferenceName": "nvmReveal",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(eye)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "block": {
+              "type": "string",
+              "description": "Block name or id (exact, or a unique substring)."
+            },
+            "offset": {
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Editor byte offset (number or hex string like 0x3A0828). Used when no block is given."
+            }
+          }
+        }
+      },
+      {
+        "name": "nvm_showView",
+        "displayName": "NVM: open workbench view",
+        "modelDescription": "Open (or focus) a view in the user's NVM workbench. Views: nvm.blocksTable (block table), nvm.hex (raw bytes), nvm.inspector (decoded value tree), nvm.overview (dump summary), nvm.blocksTree (blocks by sector / write order / identity), nvm.annotations (bookmarks, notes, tags). View-only.",
+        "toolReferenceName": "nvmShowView",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(layout)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "view": {
+              "type": "string",
+              "enum": [
+                "nvm.blocksTable",
+                "nvm.hex",
+                "nvm.inspector",
+                "nvm.overview",
+                "nvm.blocksTree",
+                "nvm.annotations"
+              ],
+              "description": "The view to open."
+            }
+          },
+          "required": [
+            "view"
+          ]
+        }
+      },
+      {
+        "name": "nvm_filterTable",
+        "displayName": "NVM: filter blocks table",
+        "modelDescription": "Set the Blocks table's search text, sort column, visible columns and 'latest only' flag (replaces the current filter; call with no arguments to clear it). Column keys are the block attribute keys (see nvm_describeDump) plus __name, __offset, __length. Use it to show the user the blocks your answer is about. View-only.",
+        "toolReferenceName": "nvmFilterTable",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(filter)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "search": {
+              "type": "string",
+              "description": "Case-insensitive substring matched against all visible cells (e.g. a block name family like 'Dem')."
+            },
+            "sortBy": {
+              "type": "string",
+              "description": "Column key to sort by."
+            },
+            "descending": {
+              "type": "boolean",
+              "description": "Sort descending."
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Column keys to show, in order (the name column is always shown)."
+            },
+            "latestOnly": {
+              "type": "boolean",
+              "description": "Only show the newest instance of each logical block."
+            }
+          }
+        }
+      },
+      {
+        "name": "nvm_applyLayout",
+        "displayName": "NVM: apply workbench layout",
+        "modelDescription": "Arrange the user's NVM workbench. Either pick a built-in preset (builtin.tableFocus, builtin.hexFocus, builtin.structure, builtin.investigate, builtin.overview) or pass a layout tree: { root: node } where node = { split: 'horizontal'|'vertical', sizes?: number[], children: node[] } or { tabs: [{ view: '<view id>', params?: {...} }] }. 'horizontal' places children side by side. The user can always restore the preset with Reset. View-only.",
+        "toolReferenceName": "nvmApplyLayout",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(layout)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "description": "Built-in preset id or name."
+            },
+            "layout": {
+              "type": "object",
+              "description": "Ad-hoc layout: { root: node } (see tool description)."
+            }
+          }
+        }
+      },
       {
         "name": "nvm_listBlocks",
         "displayName": "NVM: list blocks",
@@ -1123,6 +1292,10 @@
       ],
       "commandPalette": [
         {
+          "command": "nvmStudio.nvm.askAboutBlock",
+          "when": "false"
+        },
+        {
           "command": "nvmStudio.goToOffset",
           "when": "nvmStudio:isActive"
         },
@@ -1294,22 +1467,22 @@
         {
           "command": "nvmStudio.nvm.addBookmarkHere",
           "group": "nvm@1",
-          "when": "nvmStudio:isActive"
+          "when": "nvmStudio:isActive && webviewSection == 'hex'"
         },
         {
           "command": "nvmStudio.nvm.addNoteHere",
           "group": "nvm@2",
-          "when": "nvmStudio:isActive"
+          "when": "nvmStudio:isActive && webviewSection == 'hex'"
         },
         {
           "command": "nvmStudio.nvm.tagSelectionHere",
           "group": "nvm@3",
-          "when": "nvmStudio:isActive"
+          "when": "nvmStudio:isActive && webviewSection == 'hex'"
         },
         {
           "command": "nvmStudio.nvm.removeTagHere",
           "group": "nvm@4",
-          "when": "nvmStudio:isActive"
+          "when": "nvmStudio:isActive && webviewSection == 'hex'"
         },
         {
           "command": "nvmStudio.nvm.openReportPreview",
@@ -1319,17 +1492,27 @@
         {
           "command": "nvmStudio.copyOffsetAsDec",
           "group": "9_cutcopypaste",
-          "when": "nvmStudio:isActive"
+          "when": "nvmStudio:isActive && webviewSection == 'hex'"
         },
         {
           "command": "nvmStudio.copyOffsetAsHex",
           "group": "9_cutcopypaste",
-          "when": "nvmStudio:isActive"
+          "when": "nvmStudio:isActive && webviewSection == 'hex'"
         },
         {
-          "when": "webviewId == 'nvmStudio.hexedit'",
+          "when": "webviewId == 'nvmStudio.hexedit' && webviewSection == 'hex'",
           "command": "nvmStudio.copyAs",
           "group": "9_cutcopypaste"
+        },
+        {
+          "command": "nvmStudio.nvm.askAboutSelection",
+          "group": "nvm@0",
+          "when": "nvmStudio:isActive && webviewSection == 'hex'"
+        },
+        {
+          "command": "nvmStudio.nvm.askAboutBlock",
+          "group": "nvm@0",
+          "when": "nvmStudio:isActive && (webviewSection == 'nvm.blocksTable' || webviewSection == 'nvm.blocksTree')"
         }
       ],
       "explorer/context": [
@@ -1392,7 +1575,7 @@
     "@types/node": "^22",
     "@types/react": "^17.0.38",
     "@types/react-dom": "^17.0.11",
-    "@types/vscode": "^1.89.0",
+    "@types/vscode": "^1.95.0",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.9.2",
     "chai": "^6",
@@ -1412,6 +1595,7 @@
     "@vscode/extension-telemetry": "^1.5.1",
     "cockatiel": "^3.1.2",
     "diff": "^8.0.3",
+    "dockview-react": "^8.9.1",
     "js-base64": "^3.7.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

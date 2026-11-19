@@ -13,6 +13,7 @@ const fileImports = [
 	() => import("./nvmCustomView.test"),
 	() => import("./nvmSkills.test"),
 	() => import("./nvmAnalysis.test"),
+	() => import("./nvmWorkbench.test"),
 ];
 
 export async function run(): Promise<void> {

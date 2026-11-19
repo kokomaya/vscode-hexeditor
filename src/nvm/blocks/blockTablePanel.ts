@@ -14,28 +14,9 @@ import { MessageType, NvmBlockInfo } from "../../../shared/protocol";
 import { Disposable } from "../../dispose";
 import { HexDocument } from "../../hexDocument";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
-import { blockLabel, discoverAttributeKeys, formatAttributeValue, hexOffset } from "./blockTreeModel";
+import { buildTableModel } from "../../../shared/nvm/views/blocksTableModel";
 import { CustomViewService } from "../customViews/customViewService";
 import { addBlockToCustomView } from "../customViews/addToView";
-
-interface TableColumn {
-	key: string;
-	label: string;
-	numeric?: boolean;
-}
-
-interface TableRow {
-	offset: number;
-	isLatest?: boolean;
-	cells: Record<string, string | number>;
-}
-
-/** Fixed leading columns present for every block, before engine attributes. */
-const BASE_COLUMNS: TableColumn[] = [
-	{ key: "__name", label: "Name" },
-	{ key: "__offset", label: "Offset", numeric: true },
-	{ key: "__length", label: "Length", numeric: true },
-];
 
 function randomNonce(): string {
 	let s = "";
@@ -124,31 +105,7 @@ export class NvmBlocksTablePanel extends Disposable implements vscode.WebviewVie
 		if (!this.view) {
 			return;
 		}
-		const blocks = this.blocks();
-		const attrs = discoverAttributeKeys(blocks);
-		const columns: TableColumn[] = [
-			...BASE_COLUMNS,
-			...attrs.map(a => ({
-				key: a.key,
-				label: a.label,
-				numeric: typeof a.value === "number",
-			})),
-		];
-		// Default order follows the active "flat by address" arrangement so the
-		// initial table matches the hex layout; the webview lets the user re-sort.
-		const ordered = [...blocks].sort((a, b) => a.offset - b.offset);
-		const rows: TableRow[] = ordered.map(block => {
-			const cells: Record<string, string | number> = {
-				__name: blockLabel(block),
-				__offset: hexOffset(block.offset),
-				__length: block.length,
-			};
-			for (const attr of block.attributes ?? []) {
-				cells[attr.key] =
-					typeof attr.value === "number" ? attr.value : formatAttributeValue(attr);
-			}
-			return { offset: block.offset, isLatest: block.isLatest, cells };
-		});
+		const { columns, rows } = buildTableModel(this.blocks());
 		void this.view.webview.postMessage({ type: "model", columns, rows });
 	}
 

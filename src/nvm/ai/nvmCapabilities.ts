@@ -37,6 +37,7 @@ import { ActiveDump } from "./activeDump";
 import { AnalysisCapabilities } from "./analysisCapabilities";
 import { clamp, NvmCapabilityError, Page } from "./capabilityTypes";
 import { SkillCapabilities } from "./skillCapabilities";
+import { UiCapabilities, WorkbenchDriver } from "./uiCapabilities";
 
 export { NvmCapabilityError } from "./capabilityTypes";
 export type { Page } from "./capabilityTypes";
@@ -182,15 +183,19 @@ export class NvmCapabilities {
 	public readonly skills: SkillCapabilities;
 	/** Relational analysis (timeline, versions, cross-block queries, expressions). */
 	public readonly analysis: AnalysisCapabilities;
+	/** Drive the user's view (reveal, workbench views, table filter, layouts) + current focus. */
+	public readonly ui: UiCapabilities;
 
 	constructor(
 		private readonly registry: HexEditorRegistry,
 		private readonly annotations: AnnotationService,
 		skillRegistry?: SkillRegistry,
+		workbench?: WorkbenchDriver,
 	) {
 		const dump = new ActiveDump(registry);
 		this.skills = new SkillCapabilities(dump, skillRegistry);
 		this.analysis = new AnalysisCapabilities(dump);
+		this.ui = new UiCapabilities(dump, registry, workbench);
 	}
 
 	/** The active dump document, or throw a friendly error. */
