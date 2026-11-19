@@ -18,6 +18,8 @@ import {
 	WorkbenchPreset,
 } from "../../../shared/nvm/workbench/presets";
 import { WorkbenchRequest } from "../../../shared/nvm/workbench/commands";
+import { recommendScene } from "../../../shared/nvm/workbench/sceneMatch";
+import { NvmBlockInfo } from "../../../shared/protocol";
 
 export interface HostLink {
 	stateChanged(presetId: string, override?: WorkbenchLayout | null): void;
@@ -74,10 +76,11 @@ export class PresetSession {
 
 	/**
 	 * Blocks just became available: if the user never chose a layout, move from
-	 * the hex-only default to the table-first one. Returns true if it switched.
+	 * the hex-only default to a matching scenario layout, else the table-first
+	 * one. Returns true if it switched.
 	 */
-	public onBlocksAvailable(): boolean {
-		const target = defaultPresetId(true);
+	public onBlocksAvailable(blocks: readonly NvmBlockInfo[] = []): boolean {
+		const target = recommendScene(this.presets, blocks)?.layout.id ?? defaultPresetId(true);
 		if (this.userTouched || this.activeId === target) {
 			return false;
 		}

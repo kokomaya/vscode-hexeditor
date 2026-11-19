@@ -239,3 +239,97 @@
 	opacity: 1;
 	background: var(--vscode-toolbar-hoverBackground);
 }
+
+/* Unified search ---------------------------------------------------------- */
+
+.searchBox {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: 0 1 360px;
+	min-width: 140px;
+}
+
+.searchIcon {
+	position: absolute;
+	left: 6px;
+	width: 14px;
+	height: 14px;
+	fill: currentColor;
+	opacity: 0.7;
+	pointer-events: none;
+}
+
+.searchInput {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 3px 6px 3px 24px;
+	color: var(--vscode-input-foreground);
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 2px;
+	outline: none;
+	font-family: inherit;
+	font-size: inherit;
+}
+
+.searchInput:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+.searchResults {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	right: 0;
+	min-width: 320px;
+	max-height: 60vh;
+	overflow: auto;
+	z-index: 200;
+	padding: 4px 0;
+	background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
+	color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-radius: 4px;
+	box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+
+.searchGroup {
+	padding: 4px 10px 2px;
+	font-size: 0.85em;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.7;
+}
+
+.searchHit {
+	display: flex;
+	gap: 8px;
+	align-items: baseline;
+	padding: 3px 10px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.searchHitActive {
+	background: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+
+.searchHitLabel {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.searchHitDetail {
+	margin-left: auto;
+	opacity: 0.7;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 45%;
+}
+
+.searchEmpty {
+	padding: 4px 10px;
+	opacity: 0.7;
+}

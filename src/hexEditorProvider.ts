@@ -28,6 +28,7 @@ import { copyAsFormats } from "./copyAs";
 import { DataInspectorView } from "./dataInspectorView";
 import { disposeAll } from "./dispose";
 import { HexDocument } from "./hexDocument";
+import { describeDescriptor, LoadDiagnosticsStore } from "./nvm/diagnostics/loadDiagnostics";
 import { HexEditorRegistry } from "./hexEditorRegistry";
 import { AnnotationService } from "./nvm/annotations/annotationService";
 import { addBlockToCustomView } from "./nvm/customViews/addToView";
@@ -108,6 +109,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		customViews: CustomViewService,
 		skills?: SkillRegistry,
 		workbench?: WorkbenchHost,
+		diagnostics?: LoadDiagnosticsStore,
 	): vscode.Disposable {
 		const provider = new HexEditorProvider(
 			context,
@@ -118,6 +120,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			customViews,
 			skills,
 			workbench,
+			diagnostics,
 		);
 		const editor = vscode.window.registerCustomEditorProvider(
 			HexEditorProvider.viewType,
@@ -150,6 +153,9 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		const activeWatch = registry.onDidChangeActiveDocument(() =>
 			provider.updateProfileStatusBar(),
 		);
+		// Keep every open editor's custom views in sync with edits made elsewhere
+		// (sidebar, commands, other panels).
+		const customViewWatch = customViews.onDidChange(uri => provider.refreshCustomViews(uri));
 		provider.updateProfileStatusBar();
 		// When the discovery roots change, re-parse every open dump so newly found
 		// descriptors / source files take effect without a reopen.
@@ -167,6 +173,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			reloadCmd,
 			selectProfileCmd,
 			activeWatch,
+			customViewWatch,
 			new vscode.Disposable(() => provider._profileStatusBar?.dispose()),
 			cfgWatch,
 		);
@@ -183,6 +190,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		private readonly _customViews: CustomViewService,
 		private readonly _skills?: SkillRegistry,
 		private readonly _workbench?: WorkbenchHost,
+		private readonly _diagnostics?: LoadDiagnosticsStore,
 	) {}
 
 	/** Lazily-created manager for installed external engine packs. */
@@ -407,9 +415,14 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		let engineScript: string | undefined;
 
 		const doLoad = async (): Promise<void> => {
+			this._diagnostics?.begin(document.uri, fsPath.replace(/^.*[\\/]/, ""), dir);
 			try {
 				const result = await this.tryLoadNvmBlocks(document, fsPath, dir);
 				const allBlocks = result?.resolved.blocks ?? [];
+				this._diagnostics?.finish(document.uri, {
+					blockCount: allBlocks.length,
+					providerId: result?.resolved.providerId,
+				});
 				// Block skills decode/document bound blocks BEFORE anyone sees them, so
 				// the editor, inspector, tables, reports and AI share one enriched view.
 				if (this._skills && result) {
@@ -480,6 +493,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 				}
 			} catch (e) {
 				console.warn("NVM layout auto-detection failed:", e);
+				this._diagnostics?.fail(document.uri, e);
 			}
 		};
 
@@ -499,6 +513,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		webviewPanel.onDidDispose(() => {
 			engineWatcher?.dispose();
 			disposeAll(disposables);
+			this._diagnostics?.forget(document.uri);
 		});
 
 		void doLoad();
@@ -596,6 +611,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			".ihx",
 		]);
 		if (!hexExts.has(ext)) {
+			this._diagnostics?.update(document.uri, { status: "unsupported" });
 			return undefined;
 		}
 
@@ -608,6 +624,11 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		]);
 		const { sources, report } = gathered;
 		this.logNvmLoad(fileName, dir, configs, report);
+		this._diagnostics?.update(document.uri, {
+			descriptors: configs.map(describeDescriptor),
+			sources: report,
+			profile: this.getActiveLayoutProfile(),
+		});
 		// Legacy bundle for the external-engine boundary (packs consume text + sources).
 		const input: LayoutInput = { fileName, ext, text, configs, sources, arxml };
 
@@ -706,7 +727,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 						.update("nvm.allowExternalEngines", true, vscode.ConfigurationTarget.Workspace);
 				},
 			);
-			return undefined;
+			return this.engineBlocked(document, "Engine blocked: nvmstudio.nvm.allowExternalEngines is disabled.");
 		}
 		if (!vscode.workspace.isTrusted) {
 			void this.warnEngineBlocked(
@@ -716,7 +737,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 					await vscode.commands.executeCommand("workbench.trust.manage");
 				},
 			);
-			return undefined;
+			return this.engineBlocked(document, "Engine blocked: the workspace is not trusted.");
 		}
 
 		// Resolve the entry: an installed pack id, or a workspace-local script.
@@ -726,7 +747,10 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			const installed = await this.engineManager.resolve(config.engine);
 			if (!installed) {
 				console.warn(`NVM engine pack "${config.engine}" is not installed.`);
-				return undefined;
+				return this.engineBlocked(
+					document,
+					`Engine pack "${config.engine}" is not installed (NVM: Install Vendor Pack / Manage Engines).`,
+				);
 			}
 			scriptUri = installed.entryUri;
 			label = `engine pack "${installed.manifest.id}"`;
@@ -738,13 +762,13 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			);
 			if (!scriptUri) {
 				console.warn(`NVM engineScript "${config.engineScript}" not found near ${dir}`);
-				return undefined;
+				return this.engineBlocked(document, `Engine script "${config.engineScript}" was not found near the dump.`);
 			}
 			label = `engine script "${config.engineScript}"`;
 		}
 
 		if (!(await this.confirmEngineScript(scriptUri))) {
-			return undefined;
+			return this.engineBlocked(document, `Engine ${label} was not confirmed to run (reload the layout to be asked again).`);
 		}
 
 		// The optional project-local `hookScript` is NOT run here — it may be slow
@@ -908,6 +932,12 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 	 * Surface — once per session per message — that a layout engine was found but
 	 * could not run, with a single actionable button to unblock it.
 	 */
+	/** Record why an engine did not run (shown by `/why` and Dump & Config). */
+	private engineBlocked(document: HexDocument, reason: string): undefined {
+		this._diagnostics?.update(document.uri, { engineIssue: reason });
+		return undefined;
+	}
+
 	private async warnEngineBlocked(
 		message: string,
 		action: string,
@@ -1144,16 +1174,8 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			return;
 		}
 		for (const c of configs) {
-			const via = c.engine
-				? `engine "${c.engine}"`
-				: c.engineScript
-					? `engineScript "${c.engineScript}"`
-					: c.provider
-						? `provider "${c.provider}"`
-						: c.profile
-							? "structured profile"
-							: "positional blocks";
-			log.info(`  Descriptor: ${c.vendor ?? "(unnamed)"} via ${via}`);
+			const d = describeDescriptor(c);
+			log.info(`  Descriptor: ${d.name} via ${d.via}`);
 		}
 
 		if (report.length === 0) {
@@ -1421,8 +1443,8 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		document: HexDocument,
 		message: FromWebviewMessage,
 	): Promise<undefined | ToWebviewMessage> {
-		if (this._workbench?.handleMessage(messaging, document, message)) {
-			return;
+		if (this._workbench?.handles(message)) {
+			return this._workbench.handle(messaging, document, message);
 		}
 		switch (message.type) {
 			// If it's a packet request
@@ -1450,7 +1472,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 					editMode: document.editMode,
 					decorators: await document.readDecorators(),
 					layoutMode: this._workbench?.layoutMode() ?? "classic",
-					workbench: this._workbench?.initState(document),
+					workbench: await this._workbench?.initState(document),
 				};
 			case MessageType.SetSelectedCount:
 				document.selectionState = message;
@@ -1550,7 +1572,16 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		}
 	}
 
-	/** Push the dump's custom-view refs to the webview (for the "+" menu). */
+	/** Re-push custom views to every editor showing `uri`. */
+	public refreshCustomViews(uri: vscode.Uri): void {
+		for (const document of this._registry.documentsByUri(uri)) {
+			for (const messaging of this._registry.getMessaging(document)) {
+				void this.pushCustomViews(messaging, document);
+			}
+		}
+	}
+
+	/** Push the dump's custom views (refs + definitions) to the webview. */
 	private async pushCustomViews(
 		messaging: ExtensionHostMessageHandler,
 		document: HexDocument,

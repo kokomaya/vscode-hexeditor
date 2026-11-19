@@ -13,6 +13,7 @@
  */
 
 import * as vscode from "vscode";
+import { explainPrompt, handleStaticCommand } from "./chatCommands";
 import { emitEvidenceButtons, nvmFollowups, recordingStream, registerChatUiCommands } from "./chatUi";
 import { preparePrompt } from "./chatPrompt";
 import { tryOpenChat } from "./openChat";
@@ -111,8 +112,19 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 				stream.markdown(await renderSkillsOverview(caps));
 				return;
 			}
+			if (handleStaticCommand(request.command, caps, rawStream)) {
+				return;
+			}
+			let userPrompt = request.prompt;
+			if (request.command === "explain") {
+				userPrompt = explainPrompt(caps, request.prompt);
+				if (userPrompt.startsWith("!")) {
+					stream.markdown(userPrompt.slice(1));
+					return;
+				}
+			}
 			const ctx = await buildContext(caps);
-			const prepared = await preparePrompt(caps, request.prompt, ctx, {
+			const prepared = await preparePrompt(caps, userPrompt, ctx, {
 				noSkills: request.command === "noskills",
 			});
 			for (const name of prepared.activated) {

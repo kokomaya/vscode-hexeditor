@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "sample-write-history",
+  "name": "Write history (sample)",
+  "requires": ["layout"],
+  "when": { "anyBlockMatches": "Sample NVM block *" },
+  "root": {
+    "split": "horizontal",
+    "sizes": [55, 45],
+    "children": [
+      {
+        "tabs": [
+          { "view": "nvm.blocksTree", "params": { "arrangement": "identity" } },
+          { "view": "nvm.overview" }
+        ]
+      },
+      {
+        "split": "vertical",
+        "sizes": [55, 45],
+        "children": [
+          { "tabs": [{ "view": "nvm.blocksTable", "params": { "sort": { "key": "__offset", "dir": -1 } } }] },
+          { "tabs": [{ "view": "nvm.hex" }, { "view": "nvm.inspector" }] }
+        ]
+      }
+    ]
+  }
+}

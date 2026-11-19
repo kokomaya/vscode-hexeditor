@@ -25,7 +25,8 @@ export const BASE_RULES =
 	"changed per write), nvm_correlateWrites (is B written together with A), nvm_queryFields " +
 	"(compare a field across blocks), nvm_evaluate (check a logical expression across blocks) and " +
 	"nvm_checkRules (evaluate the rules/relations skills declare). Always cite the evidence " +
-	"(tool, block, field, sequence) and name blocks exactly as they appear in the dump (the user " +
+	"(tool, block, field, sequence). If the user asks why the dump is not recognized / parsed, call " +
+	"nvm_loadStatus. Name blocks exactly as they appear in the dump (the user " +
 	"gets one-click buttons to verify them). You can also drive the user's view: nvm_reveal shows " +
 	"a block or address, nvm_filterTable sets the Blocks table filter/sort/columns, nvm_showView " +
 	"opens a workbench view and nvm_applyLayout arranges the workbench; use them when the user " +

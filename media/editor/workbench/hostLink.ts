@@ -6,7 +6,8 @@
  * raw message plumbing out of UI components.
  */
 
-import { MessageType } from "../../../shared/protocol";
+import { EMPTY_INSIGHTS, NvmInsights } from "../../../shared/nvm/views/insights";
+import { MessageType, NvmInsightsResponseMessage } from "../../../shared/protocol";
 import { WorkbenchAction, WorkbenchRequest } from "../../../shared/nvm/workbench/commands";
 import { WorkbenchLayout } from "../../../shared/nvm/workbench/layoutSchema";
 import { messageHandler } from "../state";
@@ -28,4 +29,14 @@ export const presetHostLink: HostLink = {
 	request(request: WorkbenchRequest) {
 		messageHandler.sendEvent({ type: MessageType.WorkbenchRequest, request });
 	},
+};
+
+/** Ask the host for Overview insights (risks, failed rules, skill questions). */
+export const fetchInsights = async (): Promise<NvmInsights> => {
+	try {
+		const reply = await messageHandler.sendRequest<NvmInsightsResponseMessage>({ type: MessageType.GetNvmInsights });
+		return reply.insights;
+	} catch {
+		return EMPTY_INSIGHTS;
+	}
 };

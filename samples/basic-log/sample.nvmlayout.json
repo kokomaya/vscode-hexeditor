@@ -1,0 +1,37 @@
+{
+  "vendor": "Sample NVM",
+  "strategy": "structured",
+  "match": { "fileNameIncludes": ["sample-nvm"] },
+  "palette": {
+    "blockId": "hsl(210 70% 78%)",
+    "payloadLength": "hsl(25 85% 78%)",
+    "version": "hsl(130 45% 75%)",
+    "status": "hsl(280 45% 80%)",
+    "payload": "hsl(55 75% 80%)",
+    "crc": "hsl(0 75% 80%)"
+  },
+  "profile": {
+    "id": "sample.nvm.log.v1",
+    "endian": "little",
+    "block": {
+      "iterate": "sequential",
+      "start": 0,
+      "align": 8,
+      "header": [
+        { "name": "id", "offset": 0, "size": 2, "role": "blockId" },
+        { "name": "len", "offset": 2, "size": 2, "role": "payloadLength" },
+        { "name": "ver", "offset": 4, "size": 2, "role": "version" },
+        { "name": "stat", "offset": 6, "size": 2, "role": "status" }
+      ],
+      "payload": { "after": "header", "length": "$len" },
+      "endMarker": { "at": 0, "size": 2, "value": 65535 }
+    },
+    "integrity": {
+      "crc": {
+        "preset": "CRC16-CCITT-FALSE",
+        "range": "header+payload",
+        "stored": { "source": "trailer", "size": 2 }
+      }
+    }
+  }
+}

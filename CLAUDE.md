@@ -111,7 +111,17 @@ confined to `workbench/layoutConverter.ts` + `workbenchController.ts`. Layout fi
 and normalization are pure in `shared/nvm/workbench/`; table/tree/summary models in
 `shared/nvm/views/`. Host side: `src/nvm/workbench/` (persistence, messages, commands, focus status
 bar). Hex shortcuts are scoped via `media/editor/panelScope.ts`; context menus via
-`data-vscode-context` `webviewSection`. Status + deviations: `docs/refinement/new_ui_design_plan.md` §7.
+`data-vscode-context` `webviewSection`. Scenario layouts (`*.nvmworkbench.json` near the dump, skill
+`layouts/*.json`) come from pluggable sources in `src/nvm/workbench/sceneLayouts.ts`. User guide:
+`docs/features/workbench.md`; status + deviations: `docs/refinement/new_ui_design_plan.md` §7–8.
+
+### Load diagnostics & onboarding
+`src/nvm/diagnostics/`: `LoadDiagnosticsStore` (recorded by `hexEditorProvider` while loading),
+`explainLoad` (pure "why / next steps"), the **Dump & Config** sidebar tree, and `caps.status`
+(`@nvm /why`, `nvm_loadStatus`). `caps.insights` feeds the Overview (risks + failed skill rules + skill
+questions) via the `GetNvmInsights` request; the toolbar search is pure `shared/nvm/views/unifiedSearch.ts`. `src/nvm/onboarding/`: open-sample + walkthrough commands; pages in
+`walkthrough/` (not `media/`, which `.vscodeignore` excludes); synthetic sample in `samples/basic-log/`
+(regenerate with `tools/makeSampleDump.ts`; guarded by `src/test/nvmSample.test.ts`).
 
 ### AI surfaces
 One vendor-blind facade, `NvmCapabilities` (`src/nvm/ai/nvmCapabilities.ts`), backs both:

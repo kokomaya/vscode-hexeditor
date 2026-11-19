@@ -16,6 +16,7 @@ export const WorkbenchViewIds = {
 	blocksTree: "nvm.blocksTree",
 	overview: "nvm.overview",
 	annotations: "nvm.annotations",
+	customView: "nvm.customView",
 } as const;
 
 export type WorkbenchViewId = (typeof WorkbenchViewIds)[keyof typeof WorkbenchViewIds];
@@ -35,6 +36,12 @@ export const isWorkbenchViewId = (id: unknown): id is WorkbenchViewId =>
 
 /** Params of a Blocks Table panel instance (its saved filter / sort / columns). */
 export type BlocksTableParams = TableQuery;
+
+/** Params of a Custom View panel instance. */
+export interface CustomViewParams {
+	/** Id of the custom view to show (undefined = the first available). */
+	customViewId?: string;
+}
 
 /** Params of a Blocks Tree panel instance. */
 export interface BlocksTreeParams {

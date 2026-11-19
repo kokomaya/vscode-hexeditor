@@ -8,7 +8,6 @@
  */
 
 import * as vscode from "vscode";
-import { BUILTIN_LAYOUTS } from "../../../shared/nvm/workbench/builtinLayouts";
 import { WorkbenchViewIds } from "../../../shared/nvm/workbench/viewIds";
 import { NvmBlockInfo } from "../../../shared/protocol";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
@@ -30,6 +29,7 @@ const VIEW_PICKS: { id: string; label: string }[] = [
 	{ id: WorkbenchViewIds.overview, label: "$(dashboard) Overview" },
 	{ id: WorkbenchViewIds.blocksTree, label: "$(list-tree) Tree" },
 	{ id: WorkbenchViewIds.annotations, label: "$(bookmark) Annotations" },
+	{ id: WorkbenchViewIds.customView, label: "$(preview) Custom view" },
 ];
 
 export function blockQuestion(block: NvmBlockInfo): string {
@@ -71,12 +71,14 @@ export function registerWorkbenchCommands(
 		}),
 
 		vscode.commands.registerCommand("nvmStudio.workbench.selectLayout", async () => {
-			const picks = BUILTIN_LAYOUTS.map(l => ({ label: l.name, id: l.id }));
+			const picks = workbench.presets().map(p => ({ label: p.layout.name, description: p.source, id: p.layout.id }));
 			const pick = await vscode.window.showQuickPick(picks, { title: vscode.l10n.t("Workbench layout") });
 			if (pick && !workbench.sendCommand({ kind: "selectPreset", presetId: pick.id })) {
 				void vscode.window.showInformationMessage(vscode.l10n.t("Open an NVM dump first."));
 			}
 		}),
+
+		vscode.commands.registerCommand("nvmStudio.workbench.exportLayout", () => exportLayout(registry, workbench)),
 
 		vscode.commands.registerCommand("nvmStudio.workbench.resetLayout", () => {
 			workbench.sendCommand({ kind: "resetLayout" });
@@ -92,4 +94,33 @@ export function registerWorkbenchCommands(
 			}
 		}),
 	];
+}
+
+/**
+ * Export a preset (with the user's changes) as a `*.nvmworkbench.json` scene
+ * file — by default next to the dump, where colleagues' NVM Studio finds it.
+ */
+async function exportLayout(registry: HexEditorRegistry, workbench: WorkbenchHost): Promise<void> {
+	const pick = await vscode.window.showQuickPick(
+		workbench.presets().map(p => ({ label: p.layout.name, description: p.source, preset: p })),
+		{ title: vscode.l10n.t("Export which layout?") },
+	);
+	if (!pick) {
+		return;
+	}
+	const layout = workbench.effectiveLayout(pick.preset);
+	const slug = layout.name.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "layout";
+	const dumpDir = registry.activeDocument ? vscode.Uri.joinPath(registry.activeDocument.uri, "..") : undefined;
+	const target = await vscode.window.showSaveDialog({
+		defaultUri: dumpDir ? vscode.Uri.joinPath(dumpDir, `${slug}.nvmworkbench.json`) : undefined,
+		filters: { "NVM workbench layout": ["json"] },
+	});
+	if (!target) {
+		return;
+	}
+	const file = { version: 1, id: slug, name: layout.name, requires: layout.requires, when: layout.when, root: layout.root };
+	await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(`${JSON.stringify(file, null, 2)}\n`));
+	void vscode.window.showInformationMessage(
+		vscode.l10n.t("Layout exported. Dumps in this folder (and ./conf) now offer it as a scenario layout."),
+	);
 }

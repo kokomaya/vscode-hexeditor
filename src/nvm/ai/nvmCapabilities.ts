@@ -37,6 +37,9 @@ import { ActiveDump } from "./activeDump";
 import { AnalysisCapabilities } from "./analysisCapabilities";
 import { clamp, NvmCapabilityError, Page } from "./capabilityTypes";
 import { SkillCapabilities } from "./skillCapabilities";
+import { LoadDiagnosticsStore } from "../diagnostics/loadDiagnostics";
+import { InsightCapabilities } from "./insightCapabilities";
+import { StatusCapabilities } from "./statusCapabilities";
 import { UiCapabilities, WorkbenchDriver } from "./uiCapabilities";
 
 export { NvmCapabilityError } from "./capabilityTypes";
@@ -185,17 +188,24 @@ export class NvmCapabilities {
 	public readonly analysis: AnalysisCapabilities;
 	/** Drive the user's view (reveal, workbench views, table filter, layouts) + current focus. */
 	public readonly ui: UiCapabilities;
+	/** Why the active dump was / wasn't recognized (load diagnostics + next steps). */
+	public readonly status: StatusCapabilities;
+	/** What deserves attention (risks, failed skill rules) + skill-based starter questions. */
+	public readonly insights: InsightCapabilities;
 
 	constructor(
 		private readonly registry: HexEditorRegistry,
 		private readonly annotations: AnnotationService,
 		skillRegistry?: SkillRegistry,
 		workbench?: WorkbenchDriver,
+		diagnostics?: LoadDiagnosticsStore,
 	) {
 		const dump = new ActiveDump(registry);
 		this.skills = new SkillCapabilities(dump, skillRegistry);
 		this.analysis = new AnalysisCapabilities(dump);
 		this.ui = new UiCapabilities(dump, registry, workbench);
+		this.status = new StatusCapabilities(registry, diagnostics);
+		this.insights = new InsightCapabilities(dump, () => this.riskDetection(), this.skills);
 	}
 
 	/** The active dump document, or throw a friendly error. */

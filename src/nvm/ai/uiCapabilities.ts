@@ -12,7 +12,8 @@
  */
 
 import { sanitizeTableQuery, TableQuery } from "../../../shared/nvm/views/tableQuery";
-import { findBuiltinLayout, BUILTIN_LAYOUTS } from "../../../shared/nvm/workbench/builtinLayouts";
+import { BUILTIN_LAYOUTS } from "../../../shared/nvm/workbench/builtinLayouts";
+import { WorkbenchPreset } from "../../../shared/nvm/workbench/presets";
 import { NvmFocus, WorkbenchCommand } from "../../../shared/nvm/workbench/commands";
 import { validateLayout, WorkbenchMode } from "../../../shared/nvm/workbench/layoutSchema";
 import { isWorkbenchViewId, WorkbenchViewIds } from "../../../shared/nvm/workbench/viewIds";
@@ -25,6 +26,8 @@ import { NvmCapabilityError } from "./capabilityTypes";
 export interface WorkbenchDriver {
 	layoutMode(): WorkbenchMode;
 	sendCommand(command: WorkbenchCommand): boolean;
+	/** Selectable presets for the active dump (built-in, scenario, user). */
+	presets(): WorkbenchPreset[];
 }
 
 const hex = (n: number) => `0x${n.toString(16).toUpperCase()}`;
@@ -94,12 +97,13 @@ export class UiCapabilities {
 	public applyLayout(input: { preset?: string; layout?: unknown }): string {
 		if (input.preset) {
 			const q = input.preset.toLowerCase();
+			const layouts = this.workbench?.presets().map(p => p.layout) ?? [...BUILTIN_LAYOUTS];
 			const preset =
-				findBuiltinLayout(input.preset) ??
-				BUILTIN_LAYOUTS.find(l => l.name.toLowerCase() === q || l.id.toLowerCase().endsWith(q));
+				layouts.find(l => l.id.toLowerCase() === q) ??
+				layouts.find(l => l.name.toLowerCase() === q || l.id.toLowerCase().endsWith(q));
 			if (!preset) {
 				throw new NvmCapabilityError(
-					`Unknown preset "${input.preset}". Presets: ${BUILTIN_LAYOUTS.map(l => `${l.id} (${l.name})`).join(", ")}.`,
+					`Unknown preset "${input.preset}". Presets: ${layouts.map(l => `${l.id} (${l.name})`).join(", ")}.`,
 				);
 			}
 			this.send({ kind: "selectPreset", presetId: preset.id });

@@ -389,6 +389,30 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "nvmStudio.nvm.openSample",
+        "category": "NVM",
+        "title": "Open Sample Dump",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "nvmStudio.nvm.openWalkthrough",
+        "category": "NVM",
+        "title": "Get Started",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "nvmStudio.nvm.showLog",
+        "category": "NVM",
+        "title": "Show Log",
+        "icon": "$(output)"
+      },
+      {
+        "command": "nvmStudio.nvm.explainLoad",
+        "category": "NVM",
+        "title": "Why Was This Dump (Not) Recognized?",
+        "icon": "$(question)"
+      },
+      {
         "command": "nvmStudio.nvm.askAboutBlock",
         "category": "NVM",
         "title": "Ask @nvm About This Block",
@@ -405,6 +429,12 @@
         "category": "NVM",
         "title": "Workbench: Select Layout…",
         "icon": "$(layout)"
+      },
+      {
+        "command": "nvmStudio.workbench.exportLayout",
+        "category": "NVM",
+        "title": "Workbench: Export Layout as Scenario File…",
+        "icon": "$(export)"
       },
       {
         "command": "nvmStudio.workbench.resetLayout",
@@ -521,6 +551,10 @@
       ],
       "nvmStudio": [
         {
+          "id": "nvmStudio.dumpConfig",
+          "name": "Dump & Config"
+        },
+        {
           "id": "nvmStudio.nvmBlocks",
           "name": "Blocks"
         },
@@ -533,7 +567,8 @@
         {
           "type": "webview",
           "id": "nvmStudio.nvmCustomViews",
-          "name": "Custom Views"
+          "name": "Custom Views",
+          "when": "config.nvmstudio.nvm.layoutMode == classic"
         },
         {
           "id": "nvmStudio.annotations",
@@ -560,11 +595,129 @@
           {
             "name": "noskills",
             "description": "Answer without automatic skills (troubleshooting)."
+          },
+          {
+            "name": "help",
+            "description": "What can I ask? Capabilities and example questions for this dump."
+          },
+          {
+            "name": "explain",
+            "description": "Explain the current selection (byte / block / field) in plain language."
+          },
+          {
+            "name": "why",
+            "description": "Why was this dump (not) recognized? Descriptors, source files and next steps."
           }
         ]
       }
     ],
+    "walkthroughs": [
+      {
+        "id": "nvmStudio.gettingStarted",
+        "title": "Get started with NVM Studio",
+        "description": "Find your first clue in an NVM dump in a few minutes - by clicking or by asking @nvm.",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Open a dump",
+            "description": "Open the synthetic sample (no project data needed) or one of your own dumps.\n[Open Sample Dump](command:nvmStudio.nvm.openSample)\n[Open Dump...](command:workbench.action.files.openFile)",
+            "media": {
+              "markdown": "walkthrough/1-open.md"
+            },
+            "completionEvents": [
+              "onCommand:nvmStudio.nvm.openSample",
+              "onCommand:workbench.action.files.openFile"
+            ]
+          },
+          {
+            "id": "config",
+            "title": "Check how it is parsed",
+            "description": "The Dump & Config view shows the descriptor, source files and engine used for the active dump - and why nothing was recognized.\n[Show Dump & Config](command:nvmStudio.dumpConfig.focus)",
+            "media": {
+              "markdown": "walkthrough/2-config.md"
+            },
+            "completionEvents": [
+              "onView:nvmStudio.dumpConfig"
+            ]
+          },
+          {
+            "id": "overview",
+            "title": "Start from the Overview",
+            "description": "Counts, recent and frequently rewritten blocks, and one-click questions.\n[Open Overview](command:nvmStudio.workbench.showView?%5B%22nvm.overview%22%5D)",
+            "media": {
+              "markdown": "walkthrough/3-overview.md"
+            },
+            "completionEvents": [
+              "onCommand:nvmStudio.workbench.showView"
+            ]
+          },
+          {
+            "id": "table",
+            "title": "Find blocks in the table",
+            "description": "Search, sort, filter to the latest versions, click a row to see it in Hex and the Inspector.\n[Open Blocks table](command:nvmStudio.workbench.showView?%5B%22nvm.blocksTable%22%5D)",
+            "media": {
+              "markdown": "walkthrough/4-table.md"
+            },
+            "completionEvents": [
+              "onCommand:nvmStudio.workbench.showView"
+            ]
+          },
+          {
+            "id": "ask",
+            "title": "Ask @nvm",
+            "description": "Ask in plain language; @nvm can filter the table, open views and arrange the workbench for you.\n[Ask @nvm](command:nvmStudio.nvm.openChat)",
+            "media": {
+              "markdown": "walkthrough/5-ask.md"
+            },
+            "completionEvents": [
+              "onCommand:nvmStudio.nvm.openChat"
+            ]
+          },
+          {
+            "id": "layout",
+            "title": "Arrange your workbench",
+            "description": "Drag panels, switch presets, save and share layouts with your team.\n[Choose a layout](command:nvmStudio.workbench.selectLayout)",
+            "media": {
+              "markdown": "walkthrough/6-layout.md"
+            },
+            "completionEvents": [
+              "onCommand:nvmStudio.workbench.selectLayout"
+            ]
+          }
+        ]
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "nvmStudio.dumpConfig",
+        "contents": "Open an NVM dump (.mot / .s19 / .hex ...) to see how it is parsed: descriptor, source files, engine and layout.\n[Open Dump...](command:workbench.action.files.openFile)\n[Open Sample Dump](command:nvmStudio.nvm.openSample)\nNew here? [Get started](command:nvmStudio.nvm.openWalkthrough)"
+      },
+      {
+        "view": "nvmStudio.nvmBlocks",
+        "contents": "No NVM blocks for the active editor.\nOpen a dump that has a matching *.nvmlayout.json descriptor, or find out what is missing.\n[Why is nothing shown?](command:nvmStudio.nvm.explainLoad)\n[Select Layout Profile](command:nvmStudio.nvm.selectLayoutProfile)"
+      },
+      {
+        "view": "nvmStudio.annotations",
+        "contents": "Bookmarks, tags and notes of the active dump appear here.\nRight-click bytes in the hex view to add one."
+      }
+    ],
     "languageModelTools": [
+      {
+        "name": "nvm_loadStatus",
+        "displayName": "NVM: load status",
+        "modelDescription": "Explain whether and how the active dump was recognized: descriptors found, declared source files (resolved / missing, required / optional), pinned layout profile, provider and block count — plus concrete next steps when nothing was parsed. Use it when the user asks why the dump is shown as plain hex, why blocks are missing, or what configuration is in effect.",
+        "toolReferenceName": "nvmLoadStatus",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(info)",
+        "tags": [
+          "nvm",
+          "nvmstudio"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
       {
         "name": "nvm_reveal",
         "displayName": "NVM: reveal in editor",
@@ -596,7 +749,7 @@
       {
         "name": "nvm_showView",
         "displayName": "NVM: open workbench view",
-        "modelDescription": "Open (or focus) a view in the user's NVM workbench. Views: nvm.blocksTable (block table), nvm.hex (raw bytes), nvm.inspector (decoded value tree), nvm.overview (dump summary), nvm.blocksTree (blocks by sector / write order / identity), nvm.annotations (bookmarks, notes, tags). View-only.",
+        "modelDescription": "Open (or focus) a view in the user's NVM workbench. Views: nvm.blocksTable (block table), nvm.hex (raw bytes), nvm.inspector (decoded value tree), nvm.overview (dump summary), nvm.blocksTree (blocks by sector / write order / identity), nvm.annotations (bookmarks, notes, tags), nvm.customView (the user's comparison views). View-only.",
         "toolReferenceName": "nvmShowView",
         "canBeReferencedInPrompt": true,
         "icon": "$(layout)",
@@ -615,7 +768,8 @@
                 "nvm.inspector",
                 "nvm.overview",
                 "nvm.blocksTree",
-                "nvm.annotations"
+                "nvm.annotations",
+                "nvm.customView"
               ],
               "description": "The view to open."
             }
@@ -1349,6 +1503,21 @@
         }
       ],
       "view/title": [
+        {
+          "command": "nvmStudio.nvm.explainLoad",
+          "when": "view == nvmStudio.dumpConfig",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nvmStudio.nvm.reloadLayout",
+          "when": "view == nvmStudio.dumpConfig",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nvmStudio.nvm.showLog",
+          "when": "view == nvmStudio.dumpConfig",
+          "group": "navigation@3"
+        },
         {
           "submenu": "nvmStudio.nvm.blocks.arrangeMenu",
           "when": "view == nvmStudio.nvmBlocks",

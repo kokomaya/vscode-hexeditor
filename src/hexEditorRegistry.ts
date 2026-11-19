@@ -105,6 +105,12 @@ export class HexEditorRegistry extends Disposable {
 	}
 
 	/** Registers an opened hex document. */
+	/** Open documents for `uri` (normally zero or one). */
+	public documentsByUri(uri: vscode.Uri): HexDocument[] {
+		const target = uri.toString();
+		return [...this.docs.keys()].filter(doc => doc.uri.toString() === target);
+	}
+
 	public add(document: HexDocument, messaging: ExtensionHostMessageHandler) {
 		let collection = this.docs.get(document);
 		if (collection) {

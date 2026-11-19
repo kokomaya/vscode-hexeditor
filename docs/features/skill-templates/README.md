@@ -14,6 +14,8 @@
 | `dem-event-memory/` | block | 多版本 block、`cowrite` / `presence` / `reference` 关系 |
 | `reset-dtc-investigation/` | playbook | `uses` 组合多个 skill 做跨 block 时序 + 逻辑排查 |
 
+> **场景布局**：skill 目录下的 `layouts/*.json`（格式见 `docs/features/workbench.md`）会作为“场景布局”出现在工作台的布局下拉中；声明了 `when.anyBlockMatches` 且匹配当前 dump 时，首次打开自动选用。示例：`ecu-reset-counter/layouts/reset-investigation.json`。
+
 ## 一个 block 有很多种"值"（例如 150+ 种复位原因）时怎么组织？
 
 推荐 **一个 block skill + 按值路由的文档**，而不是每种原因一个 skill：

@@ -22,22 +22,23 @@ export class WorkbenchLayoutStore {
 	constructor(private readonly context: vscode.ExtensionContext) {}
 
 	/** Everything the webview needs to restore the workbench for `uri`. */
-	public initState(uri: vscode.Uri): WorkbenchInitState {
+	public initState(uri: vscode.Uri, scenes: readonly WorkbenchLayout[] = []): WorkbenchInitState {
 		return {
-			presets: this.presets(),
+			presets: this.presets(scenes),
 			overrides: this.overrides(),
 			lastPresetId: this.lastPresets()[uri.toString()],
 			locked: this.context.globalState.get<boolean>(LOCKED_KEY, false),
 		};
 	}
 
-	/** Built-in presets followed by the user's saved layouts. */
-	public presets(): WorkbenchPreset[] {
+	/** Built-in presets, then the dump's scenario layouts, then the user's saved layouts. */
+	public presets(scenes: readonly WorkbenchLayout[] = []): WorkbenchPreset[] {
+		const scene = scenes.map(layout => ({ layout, source: "scene" as const }));
 		const user = [...this.userLayouts("workspace"), ...this.userLayouts("personal")].map(layout => ({
 			layout,
 			source: "user" as const,
 		}));
-		return [...builtinPresets(), ...user];
+		return [...builtinPresets(), ...scene, ...user];
 	}
 
 	public async setLastPreset(uri: vscode.Uri, presetId: string): Promise<void> {
@@ -74,6 +75,11 @@ export class WorkbenchLayoutStore {
 		const list = [...this.userLayouts(scope), { ...layout, id, name }];
 		await this.memento(scope).update(USER_LAYOUTS_KEY, list);
 		return id;
+	}
+
+	/** The layout a preset currently shows (user override, else the original). */
+	public effective(preset: WorkbenchPreset): WorkbenchLayout {
+		return this.overrides()[preset.layout.id] ?? preset.layout;
 	}
 
 	private overrides(): Record<string, WorkbenchLayout> {

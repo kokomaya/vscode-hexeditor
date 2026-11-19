@@ -14,27 +14,21 @@ import { summarizeBlocks } from "../../../../../shared/nvm/views/dumpSummary";
 import { NvmBlockInfo } from "../../../../../shared/protocol";
 import * as select from "../../../state";
 import { throwOnUndefinedAccessInDev } from "../../../util";
-import { askAi, runHostAction } from "../../hostLink";
+import { runHostAction } from "../../hostLink";
 import { WorkbenchPanelProps } from "../../registry";
 import { NoLayoutState } from "../noLayoutState";
 import _style from "./overview.css";
+import { FindingsSection, QuestionsSection, useInsights } from "./overviewInsights";
 
 const style = throwOnUndefinedAccessInDev(_style);
 
 const MAX_GROUP_BARS = 16;
 
-/** Generic starter questions; they work for any vendor / layout. */
-const SUGGESTED_QUESTIONS = [
-	"Give me an overview of this dump and point out anything suspicious.",
-	"Run a risk detection on this dump and explain the findings.",
-	"Which blocks were written most recently, and what changed?",
-	"Which blocks are rewritten most often, and is that expected?",
-];
-
 export const OverviewPanel: React.FC<WorkbenchPanelProps> = () => {
 	const blocks = useRecoilValue(select.nvmBlocksAtom);
 	const annotations = useRecoilValue(select.nvmAnnotationsAtom);
 	const summary = useMemo(() => summarizeBlocks(blocks), [blocks]);
+	const insights = useInsights(blocks);
 
 	if (blocks.length === 0) {
 		return <NoLayoutState />;
@@ -53,16 +47,8 @@ export const OverviewPanel: React.FC<WorkbenchPanelProps> = () => {
 				<Tile label="Notes" value={annotations.notes.length} />
 			</section>
 
-			<section className={style.section}>
-				<h3>Ask @nvm</h3>
-				<div className={style.questions}>
-					{SUGGESTED_QUESTIONS.map(q => (
-						<button key={q} className={style.question} onClick={() => askAi(q)}>
-							{q}
-						</button>
-					))}
-				</div>
-			</section>
+			<FindingsSection insights={insights} />
+			<QuestionsSection insights={insights} />
 
 			{summary.newest && (
 				<section className={style.section}>

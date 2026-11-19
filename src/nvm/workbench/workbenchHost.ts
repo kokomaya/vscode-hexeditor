@@ -11,14 +11,28 @@
 import * as vscode from "vscode";
 import { WorkbenchAction, WorkbenchCommand, WorkbenchRequest } from "../../../shared/nvm/workbench/commands";
 import { WorkbenchLayout, WorkbenchMode } from "../../../shared/nvm/workbench/layoutSchema";
-import { WorkbenchInitState } from "../../../shared/nvm/workbench/presets";
-import { ExtensionHostMessageHandler, FromWebviewMessage, MessageType } from "../../../shared/protocol";
+import { WorkbenchInitState, WorkbenchPreset } from "../../../shared/nvm/workbench/presets";
+import { EMPTY_INSIGHTS, NvmInsights } from "../../../shared/nvm/views/insights";
+import { ExtensionHostMessageHandler, FromWebviewMessage, MessageType, ToWebviewMessage } from "../../../shared/protocol";
 import { HexDocument } from "../../hexDocument";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
 import { askNvm } from "../ai/openChat";
 import { LayoutScope, WorkbenchLayoutStore } from "./layoutStore";
+import { SceneLayoutFinder } from "./sceneLayouts";
 
 const LAYOUT_MODE_SETTING = "nvmstudio.nvm.layoutMode";
+
+/** Messages this host handles (everything else goes to the editor provider). */
+const HANDLED = new Set<MessageType>([
+	MessageType.WorkbenchStateChanged,
+	MessageType.WorkbenchRequest,
+	MessageType.NvmFocusChanged,
+	MessageType.NvmAskAi,
+	MessageType.GetNvmInsights,
+]);
+
+/** Supplies Overview insights (the AI capability facade, wired after construction). */
+export type InsightsSource = () => Promise<NvmInsights>;
 
 /** Whitelisted host commands a panel may trigger (never arbitrary command ids). */
 const ACTION_COMMANDS: Record<WorkbenchAction, string> = {
@@ -29,10 +43,14 @@ const ACTION_COMMANDS: Record<WorkbenchAction, string> = {
 
 export class WorkbenchHost {
 	private readonly store: WorkbenchLayoutStore;
+	/** Scenario layouts found for each open dump (kept for later preset re-pushes). */
+	private readonly scenes = new Map<string, WorkbenchLayout[]>();
+	private insightsSource?: InsightsSource;
 
 	constructor(
 		context: vscode.ExtensionContext,
 		private readonly registry: HexEditorRegistry,
+		private readonly sceneFinder?: SceneLayoutFinder,
 	) {
 		this.store = new WorkbenchLayoutStore(context);
 	}
@@ -43,34 +61,61 @@ export class WorkbenchHost {
 			: "workbench";
 	}
 
-	public initState(document: HexDocument): WorkbenchInitState {
-		return this.store.initState(document.uri);
+	public async initState(document: HexDocument): Promise<WorkbenchInitState> {
+		const scenes = (await this.sceneFinder?.find(document.uri)) ?? [];
+		this.scenes.set(document.uri.toString(), scenes);
+		return this.store.initState(document.uri, scenes);
 	}
 
-	/** Handle a workbench-related webview message. Returns true if it was one. */
-	public handleMessage(
+	/** All presets for a dump (built-in, its scenario layouts, user layouts). */
+	public presets(document = this.registry.activeDocument): WorkbenchPreset[] {
+		return this.store.presets(document ? this.scenes.get(document.uri.toString()) : undefined);
+	}
+
+	/** The layout a preset currently shows (including the user's changes). */
+	public effectiveLayout(preset: WorkbenchPreset): WorkbenchLayout {
+		return this.store.effective(preset);
+	}
+
+	/** Late-bind the insights source (it depends on capabilities built after this host). */
+	public setInsightsSource(source: InsightsSource): void {
+		this.insightsSource = source;
+	}
+
+	/** Whether {@link handle} is responsible for this message. */
+	public handles(message: FromWebviewMessage): boolean {
+		return HANDLED.has(message.type);
+	}
+
+	/** Handle a workbench-related webview message (may return a reply). */
+	public async handle(
 		messaging: ExtensionHostMessageHandler,
 		document: HexDocument,
 		message: FromWebviewMessage,
-	): boolean {
+	): Promise<ToWebviewMessage | undefined> {
 		switch (message.type) {
+			case MessageType.GetNvmInsights:
+				return {
+					type: MessageType.NvmInsightsResponse,
+					insights: (await this.insightsSource?.().catch(() => undefined)) ?? EMPTY_INSIGHTS,
+				};
 			case MessageType.WorkbenchStateChanged:
 				void this.store.setLastPreset(document.uri, message.presetId);
 				if (message.override !== undefined) {
 					void this.store.setOverride(message.presetId, message.override);
 				}
-				return true;
+				return undefined;
 			case MessageType.WorkbenchRequest:
-				void this.handleRequest(messaging, message.request);
-				return true;
+				void this.handleRequest(messaging, document, message.request);
+				return undefined;
 			case MessageType.NvmFocusChanged:
 				this.registry.setNvmFocus(document, message.focus);
-				return true;
+				return undefined;
 			case MessageType.NvmAskAi:
 				void askNvm(message.query);
-				return true;
+				return undefined;
 			default:
-				return false;
+				return undefined;
 		}
 	}
 
@@ -87,7 +132,11 @@ export class WorkbenchHost {
 		return sent;
 	}
 
-	private async handleRequest(messaging: ExtensionHostMessageHandler, request: WorkbenchRequest): Promise<void> {
+	private async handleRequest(
+		messaging: ExtensionHostMessageHandler,
+		document: HexDocument,
+		request: WorkbenchRequest,
+	): Promise<void> {
 		switch (request.kind) {
 			case "setLocked":
 				await this.store.setLocked(request.locked);
@@ -103,7 +152,11 @@ export class WorkbenchHost {
 				if (saved) {
 					messaging.sendEvent({
 						type: MessageType.WorkbenchCommand,
-						command: { kind: "setPresets", presets: this.store.presets(), activate: saved },
+						command: {
+							kind: "setPresets",
+							presets: this.presets(document),
+							activate: saved,
+						},
 					});
 				}
 				return;

@@ -124,3 +124,36 @@
 	font-variant-numeric: tabular-nums;
 	opacity: 0.8;
 }
+
+.findings {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.finding {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	padding: 2px 0;
+}
+
+.findingIcon {
+	flex-shrink: 0;
+}
+
+.error .findingIcon {
+	color: var(--vscode-errorForeground);
+}
+
+.warning .findingIcon {
+	color: var(--vscode-editorWarning-foreground);
+}
+
+.info .findingIcon {
+	color: var(--vscode-editorInfo-foreground);
+}
+
+.skillQuestion {
+	border-color: var(--vscode-focusBorder);
+}

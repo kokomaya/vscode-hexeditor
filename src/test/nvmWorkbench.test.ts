@@ -187,6 +187,18 @@ describe("NVM workbench", () => {
 			expect(session.activeLayout()?.id).to.equal(BuiltinPresetIds.tableFocus);
 		});
 
+		it("prefers a matching scenario layout when blocks arrive", () => {
+			const { host } = fakeHost();
+			const scene: WorkbenchLayout = {
+				version: 1, id: "scene.a", name: "A", when: { anyBlockMatches: "BlockA" }, root: { tabs: [{ view: V.hex }] },
+			};
+			const other: WorkbenchLayout = { ...scene, id: "scene.z", when: { anyBlockMatches: "Nope*" } };
+			const presets = [...builtinPresets(), { layout: other, source: "scene" as const }, { layout: scene, source: "scene" as const }];
+			const session = new PresetSession({ presets, overrides: {} }, false, host);
+			expect(session.onBlocksAvailable(blocks)).to.equal(true);
+			expect(session.getSnapshot().activeId).to.equal("scene.a");
+		});
+
 		it("falls back to the default when the remembered preset no longer exists", () => {
 			expect(choosePresetId({ presets: builtinPresets(), lastPresetId: "user.gone" }, true)).to.equal(BuiltinPresetIds.tableFocus);
 		});

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "reset-investigation",
+  "name": "Reset investigation",
+  "requires": ["layout"],
+  "when": { "anyBlockMatches": "Nvm_SafeSection_Data_Record*" },
+  "root": {
+    "split": "horizontal",
+    "sizes": [55, 45],
+    "children": [
+      {
+        "tabs": [
+          {
+            "view": "nvm.blocksTable",
+            "params": { "search": "SafeSection", "sort": { "key": "__offset", "dir": -1 } }
+          },
+          { "view": "nvm.blocksTree", "params": { "arrangement": "write" } }
+        ]
+      },
+      {
+        "split": "vertical",
+        "sizes": [55, 45],
+        "children": [
+          { "tabs": [{ "view": "nvm.inspector" }] },
+          { "tabs": [{ "view": "nvm.hex" }] }
+        ]
+      }
+    ]
+  }
+}

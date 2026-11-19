@@ -118,7 +118,7 @@ export class CustomViewService {
 		blocks: readonly NvmBlockInfo[],
 	): Promise<NvmCustomViewRef[]> {
 		const views = await this.effectiveViews(docUri, blocks);
-		return views.map(v => ({ id: v.id, name: v.name }));
+		return views.map(v => ({ id: v.id, name: v.name, definition: v }));
 	}
 
 	/**

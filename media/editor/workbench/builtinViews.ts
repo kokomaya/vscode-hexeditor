@@ -12,12 +12,14 @@ import DashboardIcon from "@vscode/codicons/src/icons/dashboard.svg";
 import FileBinaryIcon from "@vscode/codicons/src/icons/file-binary.svg";
 import InspectIcon from "@vscode/codicons/src/icons/inspect.svg";
 import ListTreeIcon from "@vscode/codicons/src/icons/list-tree.svg";
+import PreviewIcon from "@vscode/codicons/src/icons/preview.svg";
 import TableIcon from "@vscode/codicons/src/icons/table.svg";
 import { WorkbenchViewIds as V } from "../../../shared/nvm/workbench/viewIds";
 import { HexPanel } from "../hexPanel";
 import { AnnotationsPanel } from "./panels/annotations/annotationsPanel";
 import { BlocksTablePanel } from "./panels/blocksTable/blocksTablePanel";
 import { BlocksTreePanel } from "./panels/blocksTree/blocksTreePanel";
+import { CustomViewPanel } from "./panels/customView/customViewPanel";
 import { InspectorPanel } from "./panels/inspectorPanel";
 import { OverviewPanel } from "./panels/overview/overviewPanel";
 import { viewRegistry } from "./registry";
@@ -72,6 +74,15 @@ export function registerBuiltinViews(): void {
 		requires: ["layout"],
 		multiInstance: true,
 		component: BlocksTreePanel,
+	});
+	viewRegistry.register({
+		id: V.customView,
+		title: "Custom View",
+		description: 'Your comparison views (e.g. "Reset", "DEM") across matching blocks',
+		icon: PreviewIcon,
+		requires: ["layout"],
+		multiInstance: true,
+		component: CustomViewPanel,
 	});
 	viewRegistry.register({
 		id: V.annotations,

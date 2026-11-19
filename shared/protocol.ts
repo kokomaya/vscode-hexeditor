@@ -8,6 +8,7 @@ import { NvmDecodedNode } from "./nvm/structRich";
 import { NvmFocus, WorkbenchCommand, WorkbenchRequest } from "./nvm/workbench/commands";
 import { WorkbenchLayout, WorkbenchMode } from "./nvm/workbench/layoutSchema";
 import { WorkbenchInitState } from "./nvm/workbench/presets";
+import { NvmInsights } from "./nvm/views/insights";
 import { ISerializedEdits } from "./serialization";
 
 export const enum MessageType {
@@ -33,6 +34,7 @@ export const enum MessageType {
 	SetNvmAnnotations,
 	SetNvmCustomViews,
 	WorkbenchCommand,
+	NvmInsightsResponse,
 	//#endregion
 	//#region from webview
 	ReadyRequest,
@@ -53,6 +55,7 @@ export const enum MessageType {
 	WorkbenchRequest,
 	NvmFocusChanged,
 	NvmAskAi,
+	GetNvmInsights,
 	//#endregion
 }
 
@@ -298,6 +301,11 @@ export interface NvmAnnotationCommandMessage {
 export interface NvmCustomViewRef {
 	id: string;
 	name: string;
+	/**
+	 * The full view definition, so the workbench can resolve the view locally
+	 * against the blocks it already holds (no host round-trip per render).
+	 */
+	definition?: import("./nvm/customView").NvmCustomView;
 }
 
 export interface SetNvmCustomViewsMessage {
@@ -493,6 +501,17 @@ export interface NvmAskAiMessage {
 	query: string;
 }
 
+/** Webview → host request: insights for the Overview panel. */
+export interface GetNvmInsightsMessage {
+	type: MessageType.GetNvmInsights;
+}
+
+/** Host → webview reply to {@link GetNvmInsightsMessage}. */
+export interface NvmInsightsResponseMessage {
+	type: MessageType.NvmInsightsResponse;
+	insights: NvmInsights;
+}
+
 export type ToWebviewMessage =
 	| ReadyResponseMessage
 	| ReadRangeResponseMessage
@@ -512,7 +531,8 @@ export type ToWebviewMessage =
 	| StashDisplayedOffsetMessage
 	| DeleteAcceptedMessage
 	| TriggerCopyAsMessage
-	| WorkbenchCommandMessage;
+	| WorkbenchCommandMessage
+	| NvmInsightsResponseMessage;
 
 export interface OpenDocumentMessage {
 	type: MessageType.OpenDocument;
@@ -605,7 +625,8 @@ export type FromWebviewMessage =
 	| WorkbenchStateChangedMessage
 	| WorkbenchRequestMessage
 	| NvmFocusChangedMessage
-	| NvmAskAiMessage;
+	| NvmAskAiMessage
+	| GetNvmInsightsMessage;
 
 export type ExtensionHostMessageHandler = MessageHandler<ToWebviewMessage, FromWebviewMessage>;
 export type WebviewMessageHandler = MessageHandler<FromWebviewMessage, ToWebviewMessage>;

@@ -16,6 +16,7 @@
 import * as vscode from "vscode";
 import { registerAnalysisTools } from "./lmAnalysisTools";
 import { registerSkillTools } from "./lmSkillTools";
+import { registerStatusTools } from "./lmStatusTools";
 import { registerUiTools } from "./lmUiTools";
 import { getLmApi, guarded, hex, markdown, withSection } from "./lmToolKit";
 import {
@@ -282,5 +283,6 @@ export function registerLmTools(caps: NvmCapabilities): vscode.Disposable[] {
 	d.push(...registerSkillTools(lm, caps));
 	d.push(...registerAnalysisTools(lm, caps));
 	d.push(...registerUiTools(lm, caps));
+	d.push(...registerStatusTools(lm, caps));
 	return d;
 }

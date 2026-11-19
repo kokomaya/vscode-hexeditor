@@ -16,6 +16,7 @@ import React, { useState } from "react";
 import { PresetSource } from "../../../shared/nvm/workbench/presets";
 import { throwOnUndefinedAccessInDev } from "../util";
 import { PresetSnapshot } from "./presetSession";
+import { SearchBox } from "./searchBox";
 import { ViewLibrary } from "./viewLibrary";
 import _style from "./workbench.css";
 
@@ -103,6 +104,7 @@ export const WorkbenchToolbar: React.FC<ToolbarProps> = props => {
 				<DiscardIcon /> Reset
 			</button>
 			<span className={style.spacer} />
+			<SearchBox />
 			<button className={style.iconButton} onClick={props.onAskAi} title="Ask @nvm about the current selection">
 				<AskIcon />
 			</button>

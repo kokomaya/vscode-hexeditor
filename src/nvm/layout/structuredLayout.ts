@@ -15,6 +15,7 @@
 import { NvmModel, NvmProfile, parseNvm, validateProfile } from "../../../shared/nvm";
 import { NvmBlockInfo, NvmFieldInfo } from "../../../shared/protocol";
 import { ResolveContext } from "./context";
+import { structuredMetadata } from "./structuredMetadata";
 import {
     applyPalette,
     effectiveStrategy,
@@ -41,6 +42,7 @@ function isStructuredConfig(config: LayoutConfig, ctx: ResolveContext): boolean 
  */
 function blocksFromModel(config: LayoutConfig, profile: NvmProfile, model: NvmModel): NvmBlockInfo[] {
 	const out: NvmBlockInfo[] = [];
+	const metadata = structuredMetadata(model, config.vendor);
 	const trailer =
 		profile.integrity?.crc?.stored.source === "trailer"
 			? profile.integrity.crc.stored.size
@@ -91,6 +93,7 @@ function blocksFromModel(config: LayoutConfig, profile: NvmProfile, model: NvmMo
 			name: `${config.vendor} block ${instance.logicalId}`,
 			offset: start,
 			length,
+			...metadata[index],
 			raw: {
 				vendor: config.vendor,
 				logicalId: instance.logicalId,

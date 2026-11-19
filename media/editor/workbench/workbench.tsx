@@ -97,7 +97,7 @@ export const Workbench: React.FC = () => {
 
 	// Blocks arrived after open: switch to the table-first layout if untouched.
 	useEffect(() => {
-		if (hasBlocks && session.onBlocksAvailable()) {
+		if (hasBlocks && session.onBlocksAvailable(blocks)) {
 			applyActive();
 		}
 	}, [hasBlocks]);

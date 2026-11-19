@@ -36,7 +36,11 @@ import { SkillRegistry } from "./nvm/skills/skillRegistry";
 import { registerNvmStudioView } from "./nvm/ui/nvmStudioTree";
 import { WorkbenchHost } from "./nvm/workbench/workbenchHost";
 import { registerWorkbenchCommands } from "./nvm/workbench/workbenchCommands";
+import { SceneLayoutFinder, SkillSceneSource, WorkspaceSceneSource } from "./nvm/workbench/sceneLayouts";
 import { NvmFocusStatusBar } from "./nvm/workbench/focusStatusBar";
+import { registerDumpConfigView } from "./nvm/diagnostics/dumpConfigView";
+import { LoadDiagnosticsStore } from "./nvm/diagnostics/loadDiagnostics";
+import { registerOnboardingCommands } from "./nvm/onboarding/onboardingCommands";
 import { showSelectBetweenOffsets } from "./selectBetweenOffsets";
 import StatusEditMode from "./statusEditMode";
 import StatusFocus from "./statusFocus";
@@ -205,10 +209,25 @@ export async function activate(context: vscode.ExtensionContext) {
 	const skillRegistry = new SkillRegistry(context.extensionUri);
 	context.subscriptions.push(skillRegistry);
 	// The NVM workbench (dock layout inside the editor) — host side of layouts / focus / ask-AI.
-	const workbenchHost = new WorkbenchHost(context, registry);
+	const workbenchHost = new WorkbenchHost(
+		context,
+		registry,
+		new SceneLayoutFinder([new WorkspaceSceneSource(), new SkillSceneSource(skillRegistry)]),
+	);
+	// Load diagnostics: why a dump was / wasn't recognized (Dump & Config view, /why).
+	const loadDiagnostics = new LoadDiagnosticsStore();
+	context.subscriptions.push(loadDiagnostics, ...registerDumpConfigView(registry, loadDiagnostics));
 	context.subscriptions.push(...registerWorkbenchCommands(registry, workbenchHost));
 	context.subscriptions.push(new NvmFocusStatusBar(registry));
-	const nvmCapabilities = new NvmCapabilities(registry, annotationService, skillRegistry, workbenchHost);
+	context.subscriptions.push(...registerOnboardingCommands(context));
+	const nvmCapabilities = new NvmCapabilities(
+		registry,
+		annotationService,
+		skillRegistry,
+		workbenchHost,
+		loadDiagnostics,
+	);
+	workbenchHost.setInsightsSource(() => nvmCapabilities.insights.insights());
 	context.subscriptions.push(...registerSkillCommands(skillRegistry, registry, nvmCapabilities.skills));
 	context.subscriptions.push(...registerLmTools(nvmCapabilities));
 	context.subscriptions.push(...registerChatParticipant(nvmCapabilities));
@@ -240,6 +259,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			customViewService,
 			skillRegistry,
 			workbenchHost,
+			loadDiagnostics,
 		),
 	);
 }
