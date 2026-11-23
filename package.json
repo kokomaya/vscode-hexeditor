@@ -175,6 +175,21 @@
             "scope": "resource",
             "markdownDescription": "Extra folders scanned for skills (each folder **and its `skills/` subfolder**; every subfolder with a `SKILL.md` is one skill). Highest priority. Supports `${workspaceFolder}`. Other roots: `skills/` beside layout descriptors, `<workspace>/.nvmstudio/skills`, `~/nvmstudio/skills` (or `$NVMSTUDIO_HOME/skills`), and the built-in skills. Workspace roots are only used in a trusted workspace."
           },
+          "nvmstudio.nvm.skills.disabled": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "scope": "resource",
+            "markdownDescription": "Skills turned off by name (untick them in the **Skills** view or the Resources page). An inactive skill is not offered to the AI, cannot be activated by `useSkill` / `skill:name`, and its block bindings, checks and fallback decode do not run. All skills are active by default."
+          },
+          "nvmstudio.nvm.skills.context": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "pattern": "^([^/\\\\.][^/\\\\]*(/[^/\\\\.][^/\\\\]*){0,2})?$",
+            "patternErrorMessage": "product[/platform[/project]], e.g. radar/chipA/customerB",
+            "markdownDescription": "Which product / platform / project skills apply, as `product[/platform[/project]]` (e.g. `radar/chipA/customerB`). Skills are organized in folders `<product>/<platform>/<project>/<skill>/SKILL.md`; the skills of this folder and of its parents are used, and on a name clash the more specific one wins. Empty = general skills only. A layout descriptor's `skillContext` overrides this. Use **NVM: Select Skill Context…** to pick from the installed folders."
+          },
           "nvmstudio.nvm.skills.catalogSize": {
             "type": "integer",
             "default": 12,
@@ -285,7 +300,25 @@
       {
         "command": "nvmStudio.nvm.installVendorPackFromUrl",
         "category": "NVM",
-        "title": "Install Vendor Pack (Engine + Configs) from URL…"
+        "title": "Install from Server (Project Engines + Configs + Skills)…"
+      },
+      {
+        "command": "nvmStudio.nvm.skills.selectContext",
+        "category": "NVM",
+        "title": "Select Skill Context (Product / Platform / Project)…",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "nvmStudio.nvm.openResources",
+        "category": "NVM",
+        "title": "Open Resources (Skills, Conf, Engines)",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "nvmStudio.nvm.installSkillsFromUrl",
+        "category": "NVM",
+        "title": "Install Skills from Server…",
+        "icon": "$(cloud-download)"
       },
       {
         "command": "nvmStudio.nvm.manageEngines",
@@ -519,6 +552,18 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "nvmStudio.nvm.skills.activate",
+        "category": "NVM",
+        "title": "Activate Skill",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "nvmStudio.nvm.skills.deactivate",
+        "category": "NVM",
+        "title": "Deactivate Skill",
+        "icon": "$(circle-slash)"
+      },
+      {
         "command": "nvmStudio.nvm.skills.open",
         "category": "NVM",
         "title": "Open Skill",
@@ -603,6 +648,10 @@
           {
             "name": "explain",
             "description": "Explain the current selection (byte / block / field) in plain language."
+          },
+          {
+            "name": "note",
+            "description": "Save the conclusion of my last answer as a short note on the block it concerns. Optional: how to summarize (e.g. \"only the root cause\")."
           },
           {
             "name": "why",
@@ -1500,9 +1549,27 @@
         {
           "command": "nvmStudio.nvm.skills.open",
           "when": "false"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.activate",
+          "when": "false"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.deactivate",
+          "when": "false"
         }
       ],
       "view/title": [
+        {
+          "command": "nvmStudio.nvm.openResources",
+          "when": "view == nvmStudio.skills",
+          "group": "navigation@9"
+        },
+        {
+          "command": "nvmStudio.nvm.openResources",
+          "when": "view == nvmStudio.dumpConfig",
+          "group": "navigation@9"
+        },
         {
           "command": "nvmStudio.nvm.explainLoad",
           "when": "view == nvmStudio.dumpConfig",
@@ -1577,6 +1644,16 @@
           "command": "nvmStudio.nvm.skills.diagnostics",
           "when": "view == nvmStudio.skills",
           "group": "navigation@4"
+        },
+        {
+          "command": "nvmStudio.nvm.installSkillsFromUrl",
+          "when": "view == nvmStudio.skills",
+          "group": "navigation@5"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.selectContext",
+          "when": "view == nvmStudio.skills",
+          "group": "navigation@0"
         }
       ],
       "view/item/context": [
@@ -1611,8 +1688,18 @@
         },
         {
           "command": "nvmStudio.nvm.skills.open",
-          "when": "view == nvmStudio.skills && viewItem == nvmSkill",
+          "when": "view == nvmStudio.skills && viewItem =~ /^nvmSkill/",
           "group": "inline"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.deactivate",
+          "when": "view == nvmStudio.skills && viewItem == nvmSkill.active",
+          "group": "1_toggle"
+        },
+        {
+          "command": "nvmStudio.nvm.skills.activate",
+          "when": "view == nvmStudio.skills && viewItem == nvmSkill.inactive",
+          "group": "1_toggle"
         }
       ],
       "editor/title": [
@@ -1682,6 +1769,26 @@
           "command": "nvmStudio.nvm.askAboutBlock",
           "group": "nvm@0",
           "when": "nvmStudio:isActive && (webviewSection == 'nvm.blocksTable' || webviewSection == 'nvm.blocksTree')"
+        },
+        {
+          "command": "nvmStudio.nvm.addBookmarkHere",
+          "group": "nvm@1",
+          "when": "nvmStudio:isActive && (webviewSection == 'nvm.blocksTable' || webviewSection == 'nvm.blocksTree') && nvmBlockId"
+        },
+        {
+          "command": "nvmStudio.nvm.addNoteHere",
+          "group": "nvm@2",
+          "when": "nvmStudio:isActive && (webviewSection == 'nvm.blocksTable' || webviewSection == 'nvm.blocksTree') && nvmBlockId"
+        },
+        {
+          "command": "nvmStudio.nvm.tagSelectionHere",
+          "group": "nvm@3",
+          "when": "nvmStudio:isActive && (webviewSection == 'nvm.blocksTable' || webviewSection == 'nvm.blocksTree') && nvmBlockId"
+        },
+        {
+          "command": "nvmStudio.nvm.removeTagHere",
+          "group": "nvm@4",
+          "when": "nvmStudio:isActive && (webviewSection == 'nvm.blocksTable' || webviewSection == 'nvm.blocksTree') && nvmBlockId"
         }
       ],
       "explorer/context": [

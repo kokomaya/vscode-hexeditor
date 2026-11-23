@@ -14,6 +14,7 @@ import { getNvmLog } from "../nvmLog";
 import { nvmStudioSkillsUri } from "../paths";
 import { SkillRegistry } from "./skillRegistry";
 import { SkillNode, SkillsTreeProvider } from "./skillsTree";
+import { setSkillsEnabled } from "./skillToggle";
 import { blockTemplate, playbookTemplate, structTemplate } from "./skillTemplates";
 
 const enc = new TextEncoder();
@@ -85,11 +86,34 @@ export function registerSkillCommands(
 	caps: SkillCapabilities,
 ): vscode.Disposable[] {
 	const tree = new SkillsTreeProvider(skills, registry);
-	const view = vscode.window.createTreeView("nvmStudio.skills", { treeDataProvider: tree, showCollapseAll: true });
+	const view = vscode.window.createTreeView("nvmStudio.skills", {
+		treeDataProvider: tree,
+		showCollapseAll: true,
+		manageCheckboxStateManually: true,
+	});
 	const log = getNvmLog();
 
 	return [
 		view,
+		view.onDidChangeCheckboxState(e => {
+			const on = e.items.filter(([n, s]) => n.type === "skill" && s === vscode.TreeItemCheckboxState.Checked);
+			const off = e.items.filter(([n, s]) => n.type === "skill" && s === vscode.TreeItemCheckboxState.Unchecked);
+			const names = (list: typeof on) => list.map(([n]) => (n.type === "skill" ? n.meta.name : ""));
+			void (async () => {
+				if (on.length) {
+					await setSkillsEnabled(names(on), true);
+				}
+				if (off.length) {
+					await setSkillsEnabled(names(off), false);
+				}
+			})();
+		}),
+		vscode.commands.registerCommand("nvmStudio.nvm.skills.activate", (node?: SkillNode) =>
+			node?.type === "skill" ? setSkillsEnabled([node.meta.name], true) : undefined,
+		),
+		vscode.commands.registerCommand("nvmStudio.nvm.skills.deactivate", (node?: SkillNode) =>
+			node?.type === "skill" ? setSkillsEnabled([node.meta.name], false) : undefined,
+		),
 		skills.onDidChange(() => tree.refresh()),
 		registry.onDidChangeActiveDocument(() => tree.refresh()),
 		registry.onDidChangeNvmBlocks(() => tree.refresh()),

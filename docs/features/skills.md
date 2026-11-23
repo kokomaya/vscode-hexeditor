@@ -193,6 +193,33 @@ fields:                          # 可选：字段级短释义，自动带入工
 > 默认目录**不放在插件安装目录或 `.vscode/` 里**，而是 NVM Studio 统一用户主目录下的
 > `skills/`，与 engine / conf 的安装方式一致（详见第 14 节开放问题 Q1）。
 
+### 5.1a 产品 / 平台 / 项目层级（只用文件夹表达）
+
+每个搜索根目录内部可以按文件夹分层，层级结构由 server 维护者或用户自己决定，skill 文件本身不写分类：
+
+```
+skills/
+  general-tip/SKILL.md                              通用
+  radar/                                            产品（雷达、摄像头…）
+    level.json                                      可选（仅 server 使用）：{ "title", "description", "engine": "vector/fee-v3", "conf": [...] }
+                                                    engine / conf = 项目绑定，向下继承，见 server/README.zh-CN.md 第 2 步
+    reset-counter/SKILL.md                          产品级
+    chipA/                                          平台（芯片平台 / 芯片变种）
+      reset-counter/SKILL.md                        平台级
+      customerB/                                    项目（客户应用项目）
+        reset-counter/SKILL.md                      项目级
+```
+
+- 含 `SKILL.md` 的文件夹是 skill，其他文件夹是层级，最多三层（产品 → 平台 → 项目）。
+- 名字只需在**同一个文件夹内**唯一；不同项目、不同平台、不同产品下可以重名。
+- **上下文**：dump 在 `product[/platform[/project]]` 上下文中分析。来源优先级：描述符 `*.nvmlayout.json` 的
+  `"skillContext"` > 设置 `nvmstudio.nvm.skills.context`（命令 **NVM: Select Skill Context…**，或 Skills 视图顶部的 *Context* 行）。
+- 可见范围：上下文所在文件夹及其所有上层文件夹的 skill + 通用 skill；其他产品 / 平台 / 项目的 skill 不可见。
+  未设置上下文时只用通用 skill。
+- 重名时**离上下文最近的层级生效**（项目 > 平台 > 产品 > 通用），被覆盖的 skill 在诊断中记为 info。
+  不同搜索根目录之间仍按 5.1 的优先级。
+- 层级只决定"哪些 skill 参与"；skill 是否作用于某个 block 仍由它自己的 `appliesTo` 决定。
+
 ### 5.2 加载策略
 
 - 激活时只读 frontmatter 建 **Skill Index**；正文和资源在 activation 时才读（懒加载 + 缓存）。
@@ -347,6 +374,17 @@ flowchart LR
   - **NVM: Reload Skills**
   - **NVM: Show Skill Diagnostics**：输出到 NVM log（frontmatter 错误、struct 解析错误、重名覆盖、
     binding 冲突、未命中任何 block 的 block skill）。
+  - **NVM: Open Resources (Skills, Conf, Engines)**（Skills / Dump & Config 视图标题栏 `$(dashboard)`）：
+    编辑区页面 `src/nvm/resources/resourcesPanel.ts` + `media/nvm-resources/`。左侧 product / platform /
+    project 树（本地 ∪ 服务器 ∪ 最近使用，点击即切换 context），右侧 Skills / Conf / Engines 三个 tab
+    对比本地与服务器版本并安装 / 更新 / 删除，底部显示当前 dump 用到的 descriptor、engine 与生效 skill。
+    安装走与命令相同的 `runInstallPlan`（engine 仍需模态确认）。
+- **激活 / 停用**：Skills 视图每个 skill 前的复选框（或右键 Activate / Deactivate Skill）、Resources 页 Skills
+  tab 的开关，写入 `nvmstudio.nvm.skills.disabled`（按名字，默认空 = 全部激活）。`skillRegistry.getIndex` 把它们
+  置为 `enabled: false`（`disabledByUser`），于是 AI 目录、`useSkill` / `skill:name`、block 绑定、检查、fallback
+  解码、场景布局都不再使用；`useSkill` 会明确报 “inactive”。SKILL.md 里 `enabled: false` 的不能在这里打开。
+- Context 候选（`src/nvm/skills/contextMemory.ts`）= 本地 skill 文件夹 ∪ 上次服务器 levels（缓存）∪
+  最近使用 ∪ 当前值——否则只有 product 级 skill 的项目在本地没有文件夹，切走后就无法再选回。
 - `capabilityCatalog.ts` 增加对应条目（AI tools + Layout & configuration 分组）。
 - 本地化字符串走 `package.nls.json`。
 
@@ -530,7 +568,7 @@ NVM Studio 侧栏新增 **Skills** 视图；`@nvm /skills`、`@nvm /noskills`、
    display 格式化后的字符串值（如 `"0x0F - 15"`）在比较时自动回退为原始数值。
 4. **knowledge 段**：数组元素共享同一释义时合并为一行。
 
-参考示例 `docs/features/skill-templates/ecu-reset-counter/`（block skill + `reasons/*.md`）已在两份 demo dump 上
+参考示例 `docs/features/skill-templates/reset-record/`（block skill + `reasons/*.md`）已在两份 demo dump 上
 验证：绑定 3 条记录、94 个字段释义、21 条规则 / 关系检查全部通过。核对过程中修正了 demo 配置：
 `FS_SafeSection_Prv.h` 换成参考实现的值（记录长度 144 B，CRC32 与全部记录一致；原估算值为 164 B）、
 `Shared` 联合体补全 1..9 号成员且去掉错误的 `default: Mcu`、`Nvm_SafeSection_Index` 改绑为单个 `u8` 索引。

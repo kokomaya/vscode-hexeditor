@@ -158,6 +158,13 @@ export interface SkillMeta {
 	relations: SkillRelation[];
 	/** Where it was found. */
 	scope: SkillScope;
+	/** Turned off by the user (`nvmstudio.nvm.skills.disabled`); `enabled` is then false. */
+	disabledByUser?: boolean;
+	/**
+	 * Folder levels above the skill inside its root (product / platform /
+	 * project, see `hierarchy.ts`); empty or absent = general.
+	 */
+	hierarchy?: string[];
 	/** Directory of the skill (opaque location string, e.g. a URI). */
 	dir: string;
 	/** Markdown body offset is not stored; the body is loaded lazily. */

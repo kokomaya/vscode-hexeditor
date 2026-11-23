@@ -8,10 +8,9 @@
  */
 
 import * as vscode from "vscode";
-import { downloadConfigsFromBase } from "../discovery/configInstall";
 import { EngineManager, InstalledEngine } from "./engineManager";
 
-const SECURITY_NOTE =
+export const SECURITY_NOTE =
 	"Engine packs run JavaScript in the desktop extension host. Only install engines you trust.";
 
 async function pickInstallSource(
@@ -36,8 +35,7 @@ async function pickInstallSource(
 }
 
 /** Register all engine-management commands. Returns disposables. */
-export function registerEngineCommands(context: vscode.ExtensionContext): vscode.Disposable[] {
-	const manager = new EngineManager(context);
+export function registerEngineCommands(manager: EngineManager): vscode.Disposable[] {
 
 	const install = vscode.commands.registerCommand("nvmStudio.nvm.installEngine", async () => {
 		const ok = await vscode.window.showWarningMessage(
@@ -96,73 +94,6 @@ export function registerEngineCommands(context: vscode.ExtensionContext): vscode
 		},
 	);
 
-	const installVendorPack = vscode.commands.registerCommand(
-		"nvmStudio.nvm.installVendorPackFromUrl",
-		async () => {
-			const input = await vscode.window.showInputBox({
-				title: "Install vendor pack (engine + layout configs) from server",
-				prompt: "Server base URL — installs every engine and layout descriptor it serves",
-				placeHolder: "http://127.0.0.1:7788",
-				validateInput: v => (/^https?:\/\/.+/.test(v) ? undefined : "Enter an http(s) URL"),
-			});
-			if (!input) {
-				return;
-			}
-			const base = input.replace(/\/+$/, "");
-
-			// Engines are code execution, so gate the whole flow behind one modal.
-			const ok = await vscode.window.showWarningMessage(
-				`${SECURITY_NOTE}\n\nInstall all engines and layout configs from:\n${base}`,
-				{ modal: true },
-				"Download & install",
-			);
-			if (ok !== "Download & install") {
-				return;
-			}
-
-			const summary: string[] = [];
-			// 1) Engines (a layout descriptor references one by id, so install first).
-			try {
-				const res = await fetch(`${base}/v1/engines`);
-				if (!res.ok) {
-					throw new Error(`List engines failed: ${res.status} ${res.statusText}`);
-				}
-				const payload = (await res.json()) as {
-					engines?: { id: string; latest?: string }[];
-				};
-				const engines = Array.isArray(payload.engines) ? payload.engines : [];
-				let engineCount = 0;
-				for (const e of engines) {
-					if (!e?.id || !e.latest) {
-						continue;
-					}
-					const url = `${base}/v1/engines/${encodeURIComponent(e.id)}/${encodeURIComponent(e.latest)}/engine.js`;
-					try {
-						await manager.installFromUrl(url, e.id);
-						engineCount++;
-					} catch (err) {
-						console.warn(`Engine ${e.id} install failed:`, err);
-					}
-				}
-				summary.push(`${engineCount} engine(s)`);
-			} catch (e) {
-				summary.push(`engines: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			// 2) Layout configs (plain JSON; also registers the conf folder as a root).
-			try {
-				const { installed, confDir } = await downloadConfigsFromBase(base);
-				summary.push(`${installed} layout config(s) → ${confDir.fsPath}`);
-			} catch (e) {
-				summary.push(`configs: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			void vscode.window.showInformationMessage(
-				`Vendor pack installed from ${base}:\n- ${summary.join("\n- ")}`,
-			);
-		},
-	);
-
 	const manage = vscode.commands.registerCommand("nvmStudio.nvm.manageEngines", async () => {
 		const engines = await manager.list();
 		if (engines.length === 0) {
@@ -174,7 +105,7 @@ export function registerEngineCommands(context: vscode.ExtensionContext): vscode
 		const pick = await vscode.window.showQuickPick(
 			engines.map(e => ({
 				label: e.manifest.displayName ?? e.manifest.id,
-				description: `${e.manifest.id}${e.manifest.version ? "@" + e.manifest.version : ""}`,
+				description: `${e.ref}${e.manifest.version ? "@" + e.manifest.version : ""}`,
 				detail: e.manifest.description ?? e.manifest.source,
 				engine: e,
 			})),
@@ -184,15 +115,15 @@ export function registerEngineCommands(context: vscode.ExtensionContext): vscode
 			return;
 		}
 		const confirm = await vscode.window.showWarningMessage(
-			`Remove engine "${pick.engine.manifest.id}"?`,
+			`Remove engine "${pick.engine.ref}"?`,
 			{ modal: true },
 			"Remove",
 		);
 		if (confirm === "Remove") {
-			await manager.remove(pick.engine.manifest.id);
-			void vscode.window.showInformationMessage(`Removed engine "${pick.engine.manifest.id}".`);
+			await manager.remove(pick.engine);
+			void vscode.window.showInformationMessage(`Removed engine "${pick.engine.ref}".`);
 		}
 	});
 
-	return [install, installUrl, installVendorPack, manage];
+	return [install, installUrl, manage];
 }

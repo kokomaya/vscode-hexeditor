@@ -11,6 +11,8 @@ import * as vscode from "vscode";
 import { NvmBlockInfo } from "../../../shared/protocol";
 import { SkillDiagnostic, SkillMeta } from "../../../shared/nvm/skills/types";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
+import { formatHierarchyPath } from "../../../shared/nvm/skills/hierarchy";
+import { SELECT_SKILL_CONTEXT_COMMAND } from "./skillContextCommand";
 import { SkillRegistry } from "./skillRegistry";
 
 const MAX_CHILD_BLOCKS = 200;
@@ -19,7 +21,8 @@ export type SkillNode =
 	| { type: "group"; kind: "playbook" | "block"; skills: SkillMeta[] }
 	| { type: "skill"; meta: SkillMeta; bound?: number[]; problems: SkillDiagnostic[] }
 	| { type: "block"; block: NvmBlockInfo }
-	| { type: "info"; label: string };
+	| { type: "info"; label: string }
+	| { type: "context"; context: string[]; hidden: number; available: number };
 
 export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillNode> {
 	private readonly emitter = new vscode.EventEmitter<SkillNode | undefined>();
@@ -59,10 +62,13 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillNode> {
 
 	private async roots(): Promise<SkillNode[]> {
 		const index = await this.skills.getIndex(this.registry.activeDocument?.uri.fsPath);
-		if (!index.skills.length) {
-			return [{ type: "info", label: "No skills yet — run “NVM: New Skill…”" }];
-		}
 		const out: SkillNode[] = [];
+		if (index.contexts.length) {
+			out.push({ type: "context", context: index.context, hidden: index.hiddenByContext, available: index.contexts.length });
+		}
+		if (!index.skills.length) {
+			return [...out, { type: "info", label: "No skills yet — run “NVM: New Skill…”" }];
+		}
 		for (const kind of ["playbook", "block"] as const) {
 			const list = index.skills.filter(s => s.kind === kind).sort((a, b) => a.name.localeCompare(b.name));
 			if (list.length) {
@@ -111,9 +117,18 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillNode> {
 					node.meta.kind === "block" && n !== undefined ? `${n} block(s)` : "",
 					node.meta.uses.length ? `uses ${node.meta.uses.length}` : "",
 					node.meta.rules.length + node.meta.relations.length ? `${node.meta.rules.length + node.meta.relations.length} check(s)` : "",
+					node.meta.hierarchy?.length ? formatHierarchyPath(node.meta.hierarchy) : "",
 					node.meta.scope,
 				].filter(Boolean);
-				item.description = tags.join(" · ");
+				const off = !node.meta.enabled;
+				item.description = [off ? (node.meta.disabledByUser ? "inactive" : "disabled in SKILL.md") : "", ...tags].filter(Boolean).join(" · ");
+				// Checkbox = active for the AI and the decode pass (SKILL.md `enabled: false` cannot be overridden here).
+				if (node.meta.disabledByUser || node.meta.enabled) {
+					item.checkboxState = {
+						state: off ? vscode.TreeItemCheckboxState.Unchecked : vscode.TreeItemCheckboxState.Checked,
+						tooltip: off ? "Inactive — tick to let the AI use this skill" : "Active — untick to hide this skill from the AI",
+					};
+				}
 				const md = new vscode.MarkdownString(`**${node.meta.name}** (${node.meta.kind}, ${node.meta.scope})\n\n${node.meta.description}`);
 				if (node.problems.length) {
 					md.appendMarkdown(`\n\n---\n${node.problems.map(p => `- ⚠ ${p.message}`).join("\n")}`);
@@ -122,7 +137,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillNode> {
 				item.iconPath = new vscode.ThemeIcon(
 					node.problems.length ? "warning" : node.meta.enabled ? (node.meta.kind === "playbook" ? "book" : "symbol-field") : "circle-slash",
 				);
-				item.contextValue = "nvmSkill";
+				item.contextValue = off ? "nvmSkill.inactive" : "nvmSkill.active";
 				item.command = { command: "nvmStudio.nvm.skills.open", title: "Open Skill", arguments: [node] };
 				return item;
 			}
@@ -138,6 +153,15 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillNode> {
 			}
 			case "info":
 				return new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.None);
+			case "context": {
+				const label = node.context.length ? formatHierarchyPath(node.context) : "general only";
+				const item = new vscode.TreeItem(`Context: ${label}`, vscode.TreeItemCollapsibleState.None);
+				item.description = node.hidden ? `${node.hidden} skill(s) of other products / platforms / projects hidden` : "";
+				item.tooltip = "Which product / platform / project skills apply to this dump. Click to change.";
+				item.iconPath = new vscode.ThemeIcon("filter");
+				item.command = { command: SELECT_SKILL_CONTEXT_COMMAND, title: "Select Skill Context" };
+				return item;
+			}
 		}
 	}
 }

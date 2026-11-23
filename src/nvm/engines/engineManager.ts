@@ -5,9 +5,11 @@
  * Engine pack manager — install / download / resolve external NVM engines.
  *
  * The extension core ships no vendor layout. Engines are **packs** the user
- * installs (from a local folder/file) or downloads (from a URL) into the
- * extension's global storage. A `*.nvmlayout.json` references an installed pack
- * by id (`"engine": "vector-fee-v3"`); the manager resolves that id to the
+ * installs (from a local folder/file, a URL, or an install server) into the
+ * NVM Studio home, organised like the server: `<home>/engines/<vendor>/<layout>/`
+ * (e.g. `vector/fee-v3`). A `*.nvmlayout.json` references a pack by that folder
+ * path (`"engine": "vector/fee-v3"`) or, for older packs, by the `id` in its
+ * `engine.json` (`"engine": "vector-fee-v3"`); the manager resolves it to the
  * pack's entry script, which the (gated) loader then runs.
  *
  * Installing / running workspace or downloaded JavaScript is code execution and
@@ -16,11 +18,13 @@
  */
 
 import * as vscode from "vscode";
+import { engineFileUrl, MAX_ENGINE_DEPTH, parseEngineRef, RemoteEngine } from "../../../shared/nvm/install/remoteEngines";
+import { downloadFolder } from "../install/download";
 import { nvmStudioEnginesUri } from "../paths";
 
 /** An engine pack manifest (`engine.json`). */
 export interface EngineManifest {
-	/** Stable pack id, referenced by descriptors via `"engine"`. */
+	/** Pack id; older descriptors reference it via `"engine"`. */
 	id: string;
 	/** Semver-ish version string. */
 	version?: string;
@@ -41,6 +45,8 @@ export interface EngineManifest {
 
 /** A pack installed under global storage. */
 export interface InstalledEngine {
+	/** Folder path under the engine root, e.g. "vector/fee-v3" (what descriptors reference). */
+	ref: string;
 	manifest: EngineManifest;
 	/** The pack folder. */
 	dir: vscode.Uri;
@@ -52,7 +58,6 @@ function isManifest(value: unknown): value is EngineManifest {
 	return (
 		!!value &&
 		typeof value === "object" &&
-		typeof (value as EngineManifest).id === "string" &&
 		typeof (value as EngineManifest).entry === "string"
 	);
 }
@@ -63,7 +68,7 @@ function safeId(id: string): string {
 }
 
 /**
- * Infer an engine id from a download URL. Understands the registry layout
+ * Infer an engine id from a download URL. Understands the old registry layout
  * `.../v1/engines/<id>/<version>/engine.js` (returns `<id>`), and otherwise
  * falls back to the file base name without `.engine.js`/`.js`.
  */
@@ -85,7 +90,7 @@ function inferEngineIdFromUrl(url: string): string | undefined {
 }
 
 export class EngineManager {
-	/** Root folder for user-installed / downloaded packs: `<globalStorage>/engines`. */
+	/** Root folder for user-installed / downloaded packs: `<home>/engines`. */
 	private readonly root: vscode.Uri;
 	/** Read-only packs shipped with the extension: `<extension>/dist/engines`. */
 	private readonly bundledRoot: vscode.Uri;
@@ -104,79 +109,66 @@ export class EngineManager {
 		await vscode.workspace.fs.createDirectory(this.root);
 	}
 
-	/** List every installed pack (skips folders without a valid manifest). */
-	public async list(): Promise<InstalledEngine[]> {
-		const out: InstalledEngine[] = [];
+	/** List every pack below `root` (a folder with `engine.json` is a pack; others are vendors). */
+	public list(root = this.root): Promise<InstalledEngine[]> {
+		return this.scan(root, [], []);
+	}
+
+	private async scan(root: vscode.Uri, path: string[], out: InstalledEngine[]): Promise<InstalledEngine[]> {
 		let entries: [string, vscode.FileType][];
 		try {
-			entries = await vscode.workspace.fs.readDirectory(this.root);
+			entries = await vscode.workspace.fs.readDirectory(vscode.Uri.joinPath(root, ...path));
 		} catch {
 			return out;
 		}
 		for (const [name, type] of entries) {
-			if (type !== vscode.FileType.Directory) {
+			if (type !== vscode.FileType.Directory || name.startsWith(".")) {
 				continue;
 			}
-			const dir = vscode.Uri.joinPath(this.root, name);
-			const engine = await this.readPack(dir);
-			if (engine) {
-				out.push(engine);
+			const next = [...path, name];
+			const pack = await this.readPack(vscode.Uri.joinPath(root, ...next), next.join("/"));
+			if (pack) {
+				out.push(pack);
+			} else if (next.length < MAX_ENGINE_DEPTH) {
+				await this.scan(root, next, out);
 			}
 		}
 		return out;
 	}
 
-	/** Resolve a pack by id (an optional `@version` suffix is ignored). */
+	/**
+	 * Resolve a reference: the pack's folder path ("vector/fee-v3") or, for
+	 * older descriptors, its manifest id ("vector-fee-v3"). An `@version`
+	 * suffix is ignored.
+	 */
 	public async resolve(ref: string): Promise<InstalledEngine | undefined> {
-		const id = ref.split("@")[0].trim();
-		// 1. A user-installed / downloaded pack in global storage wins (lets a user
-		//    override a bundled engine by installing their own with the same id).
-		const dir = vscode.Uri.joinPath(this.root, safeId(id));
-		const direct = await this.readPack(dir);
-		if (direct?.manifest.id === id) {
+		const path = parseEngineRef(ref);
+		if (!path) {
+			return undefined;
+		}
+		const key = path.join("/");
+		// 1. A user-installed / downloaded pack wins (lets a user override a
+		//    bundled engine by installing their own with the same reference).
+		const direct = await this.readPack(vscode.Uri.joinPath(this.root, ...path), key);
+		if (direct) {
 			return direct;
 		}
-		const scanned = (await this.list()).find(e => e.manifest.id === id);
-		if (scanned) {
+		const installed = await this.list();
+		const scanned = installed.find(e => e.ref === key) ?? installed.find(e => e.manifest.id === key);
+		if (scanned || !this.allowBundled) {
 			return scanned;
 		}
 		// 2. DEBUG ONLY: fall back to a pack the extension ships under
 		//    `dist/engines/*`, loaded in place — `npm run compile` writes it there,
 		//    so there is nothing to install: rebuild + reload the window and the new
 		//    code is picked up. Disabled in shipped builds, where production must use
-		//    a real global install or a project-local `engineScript`.
-		if (!this.allowBundled) {
-			return undefined;
-		}
-		return this.resolveBundled(id);
-	}
-
-	/** Find a bundled pack (`<extension>/dist/engines/*`) by id, read in place. */
-	private async resolveBundled(id: string): Promise<InstalledEngine | undefined> {
-		const guess = await this.readPack(vscode.Uri.joinPath(this.bundledRoot, safeId(id)));
-		if (guess?.manifest.id === id) {
-			return guess;
-		}
-		let entries: [string, vscode.FileType][];
-		try {
-			entries = await vscode.workspace.fs.readDirectory(this.bundledRoot);
-		} catch {
-			return undefined;
-		}
-		for (const [name, type] of entries) {
-			if (type !== vscode.FileType.Directory) {
-				continue;
-			}
-			const pack = await this.readPack(vscode.Uri.joinPath(this.bundledRoot, name));
-			if (pack?.manifest.id === id) {
-				return pack;
-			}
-		}
-		return undefined;
+		//    a real install or a project-local `engineScript`.
+		const bundled = await this.list(this.bundledRoot);
+		return bundled.find(e => e.ref === key) ?? bundled.find(e => e.manifest.id === key);
 	}
 
 	/** Read + validate a pack folder's manifest and entry. */
-	private async readPack(dir: vscode.Uri): Promise<InstalledEngine | undefined> {
+	private async readPack(dir: vscode.Uri, ref: string): Promise<InstalledEngine | undefined> {
 		try {
 			const manifestUri = vscode.Uri.joinPath(dir, "engine.json");
 			const buf = await vscode.workspace.fs.readFile(manifestUri);
@@ -184,12 +176,31 @@ export class EngineManager {
 			if (!isManifest(manifest)) {
 				return undefined;
 			}
+			manifest.id = typeof manifest.id === "string" && manifest.id ? manifest.id : ref;
 			const entryUri = vscode.Uri.joinPath(dir, manifest.entry);
 			await vscode.workspace.fs.stat(entryUri);
-			return { manifest, dir, entryUri };
+			return { ref, manifest, dir, entryUri };
 		} catch {
 			return undefined;
 		}
+	}
+
+	/**
+	 * Install a pack from an install server into `<root>/<vendor>/<layout>/`,
+	 * replacing what was there. The caller must have confirmed trust.
+	 */
+	public async installFromServer(base: string, engine: RemoteEngine): Promise<InstalledEngine> {
+		await this.ensureRoot();
+		const dir = vscode.Uri.joinPath(this.root, ...engine.path);
+		await downloadFolder(
+			dir,
+			engine.files.map(rel => ({ rel, url: engineFileUrl(base, engine.id, rel) })),
+		);
+		const installed = await this.readPack(dir, engine.id);
+		if (!installed) {
+			throw new Error(`Engine ${engine.id} has no valid engine.json / entry script.`);
+		}
+		return installed;
 	}
 
 	/**
@@ -197,14 +208,15 @@ export class EngineManager {
 	 * whole folder into global storage under the pack id.
 	 */
 	public async installFromFolder(src: vscode.Uri): Promise<InstalledEngine> {
-		const pack = await this.readPack(src);
+		const pack = await this.readPack(src, src.path.replace(/\/+$/, "").replace(/^.*\//, ""));
 		if (!pack) {
 			throw new Error(`No valid engine.json found in ${src.fsPath}`);
 		}
 		await this.ensureRoot();
-		const dest = vscode.Uri.joinPath(this.root, safeId(pack.manifest.id));
+		const ref = safeId(pack.manifest.id);
+		const dest = vscode.Uri.joinPath(this.root, ref);
 		await this.copyRecursive(src, dest);
-		const installed = await this.readPack(dest);
+		const installed = await this.readPack(dest, ref);
 		if (!installed) {
 			throw new Error("Engine pack failed to install (copy incomplete).");
 		}
@@ -229,7 +241,7 @@ export class EngineManager {
 			displayName: packId,
 			source: src.fsPath,
 		});
-		return (await this.readPack(dest))!;
+		return (await this.readPack(dest, packId))!;
 	}
 
 	/**
@@ -257,14 +269,13 @@ export class EngineManager {
 			displayName: packId,
 			source: url,
 		});
-		return (await this.readPack(dest))!;
+		return (await this.readPack(dest, packId))!;
 	}
 
-	/** Remove an installed pack by id. */
-	public async remove(id: string): Promise<void> {
-		const dir = vscode.Uri.joinPath(this.root, safeId(id));
+	/** Remove an installed pack. */
+	public async remove(engine: InstalledEngine): Promise<void> {
 		try {
-			await vscode.workspace.fs.delete(dir, { recursive: true, useTrash: false });
+			await vscode.workspace.fs.delete(engine.dir, { recursive: true, useTrash: false });
 		} catch {
 			// already gone
 		}

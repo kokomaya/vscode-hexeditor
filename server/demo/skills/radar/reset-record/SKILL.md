@@ -1,10 +1,10 @@
 ---
-name: ecu-reset-counter
+name: reset-record
 kind: block
 description: >
   ECU 异常复位记录（FS SafeSection）。用户问 reset 次数、复位原因、最近几次复位、复位上下文/寄存器、
   复位与 DTC 的关系时使用。
-keywords: [reset, 复位, 重启, 异常复位, 复位原因, reset reason, safe section, SafeSection, watchdog, 看门狗, exception, 异常, cat2]
+keywords: [reset, 复位, 重启, 异常复位, 复位记录, reset record, 复位原因, reset reason, safe section, SafeSection, watchdog, 看门狗, exception, 异常, cat2]
 appliesTo:
   blocks: ["Nvm_SafeSection_Data_Record*"]
 # 结构体 layout 由 conf/vector_structs.demo.nvmlayout.json（FS_SafeSection_t_Data）提供，配置为准，
@@ -152,7 +152,7 @@ FS（Functional Safety）模块在发生 Cat2 复位前把复位现场写入 RAM
 - **"一共复位了多少次"** → NvM 里会尽可能多的保存异常，复位信息，直至NVM翻页擦除；`FsData.u_ResetCounter` 是**连续**异常复位计数，不是总次数。全生命周期次数不在 SafeSection 中——如实说明，并建议查 DEM 事件计数（TODO 指明项目中对应的 block）。
 - **"复位时在干什么"** → `e_SharedInfoID` 指出 `Shared` 中哪个成员有效（见 `reasons/shared-info.md`）；
   处理器异常读 `Shared.Mcu`，地址类字段用 map 文件定位（`nvm_useSkill("reset-exception-analysis")`）。
-- **"这条记录可信吗"** → `nvm_checkRules({ skills: ["ecu-reset-counter"] })`：状态、槽位、计数上限、与索引块的一致性。
+- **"这条记录可信吗"** → `nvm_checkRules({ skills: ["reset-record"] })`：状态、槽位、计数上限、与索引块的一致性。
 
 ## 注意
 

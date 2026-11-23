@@ -1,0 +1,24 @@
+{
+  "_comment": "Project descriptor for radar / chipA / customerB (demo). The engine is the vendor format (engines/demo-vendor/log-v1 on the server); everything project-specific — which dumps it matches, block names, colors — lives here.",
+  "vendor": "Demo vendor log v1 — customerB",
+  "engine": "demo-vendor/log-v1",
+  "skillContext": "radar/chipA/customerB",
+  "match": { "fileNameIncludes": ["sample-nvm"] },
+  "palette": {
+    "blockId": "hsl(210 70% 78%)",
+    "payloadLength": "hsl(25 85% 78%)",
+    "version": "hsl(130 45% 75%)",
+    "status": "hsl(280 45% 80%)",
+    "payload": "hsl(55 75% 80%)",
+    "crc": "hsl(0 75% 80%)"
+  },
+  "options": {
+    "alignment": 8,
+    "names": {
+      "0x0010": "ResetCounter",
+      "0x0020": "DtcMemory",
+      "0x0030": "Calibration",
+      "0x0040": "Odometer"
+    }
+  }
+}

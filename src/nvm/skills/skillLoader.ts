@@ -10,6 +10,7 @@
 
 import * as vscode from "vscode";
 import { NvmStructCatalog, parseStructCatalog } from "../../../shared/nvm/structRich";
+import { MAX_HIERARCHY_DEPTH } from "../../../shared/nvm/skills/hierarchy";
 import { parseSkill, safeRelativePath } from "../../../shared/nvm/skills/meta";
 import { SkillDiagnostic, SkillMeta } from "../../../shared/nvm/skills/types";
 import { SkillRoot } from "./skillRoots";
@@ -36,45 +37,65 @@ export interface ScanResult {
 	diagnostics: SkillDiagnostic[];
 }
 
-/** Scan one root: every direct subfolder holding a `SKILL.md` is a skill. */
+/**
+ * Scan one root. A folder with `SKILL.md` is a skill; any other folder is a
+ * hierarchy level (product / platform / project, max three deep) and is
+ * descended into. See `shared/nvm/skills/hierarchy.ts`.
+ */
 export async function scanRoot(root: SkillRoot): Promise<ScanResult> {
 	const out: ScanResult = { skills: [], diagnostics: [] };
+	await scanLevel(root, root.uri, [], out);
+	return out;
+}
+
+async function scanLevel(root: SkillRoot, uri: vscode.Uri, path: string[], out: ScanResult): Promise<void> {
 	let entries: [string, vscode.FileType][];
 	try {
-		entries = await vscode.workspace.fs.readDirectory(root.uri);
+		entries = await vscode.workspace.fs.readDirectory(uri);
 	} catch {
-		return out; // missing root is normal
+		return; // missing root is normal
 	}
 	for (const [name, type] of entries) {
 		if (type !== vscode.FileType.Directory || name.startsWith(".")) {
 			continue;
 		}
-		const dir = vscode.Uri.joinPath(root.uri, name);
+		const dir = vscode.Uri.joinPath(uri, name);
 		const file = vscode.Uri.joinPath(dir, SKILL_FILE);
-		if (!(await exists(file))) {
-			continue;
-		}
-		try {
-			const parsed = parseSkill({
-				text: await readText(file),
-				dirName: name,
-				dir: dir.toString(),
-				scope: root.scope,
-			});
-			out.diagnostics.push(...parsed.diagnostics);
-			if (parsed.meta) {
-				out.skills.push(parsed.meta);
-			}
-		} catch (e) {
-			out.diagnostics.push({
-				severity: "error",
-				skill: name,
-				location: dir.toString(),
-				message: `cannot read SKILL.md: ${e instanceof Error ? e.message : String(e)}`,
-			});
+		if (await exists(file)) {
+			await readSkill(root, name, dir, file, path, out);
+		} else if (path.length < MAX_HIERARCHY_DEPTH) {
+			await scanLevel(root, dir, [...path, name], out);
 		}
 	}
-	return out;
+}
+
+async function readSkill(
+	root: SkillRoot,
+	name: string,
+	dir: vscode.Uri,
+	file: vscode.Uri,
+	hierarchy: string[],
+	out: ScanResult,
+): Promise<void> {
+	try {
+		const parsed = parseSkill({
+			text: await readText(file),
+			dirName: name,
+			dir: dir.toString(),
+			scope: root.scope,
+		});
+		out.diagnostics.push(...parsed.diagnostics);
+		if (parsed.meta) {
+			out.skills.push(hierarchy.length ? { ...parsed.meta, hierarchy } : parsed.meta);
+		}
+	} catch (e) {
+		out.diagnostics.push({
+			severity: "error",
+			skill: name,
+			location: dir.toString(),
+			message: `cannot read SKILL.md: ${e instanceof Error ? e.message : String(e)}`,
+		});
+	}
 }
 
 const dirUri = (meta: SkillMeta) => vscode.Uri.parse(meta.dir);

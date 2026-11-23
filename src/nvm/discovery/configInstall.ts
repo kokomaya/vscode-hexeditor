@@ -2,23 +2,18 @@
 // Licensed under the MIT license.
 
 /**
- * Install layout descriptors (`*.nvmlayout.json`) from an engine/config server
- * into the unified NVM Studio user home (`<home>/conf`), then register that
+ * Install layout descriptors (`*.nvmlayout.json`) from an install server into
+ * the unified NVM Studio user home, keeping the server's folders
+ * (`<home>/conf/radar/chipA/customerB/x.nvmlayout.json`), then register each
  * folder in `nvmstudio.nvm.layoutRoots` so descriptors are discovered without
  * copying them next to every dump.
  */
 
 import * as vscode from "vscode";
+import { configFileUrl, parseConfigListing, RemoteConfig } from "../../../shared/nvm/install/remoteConfigs";
+import { fetchJson, fetchText, writeText } from "../install/download";
 import { nvmStudioConfUri } from "../paths";
-
-interface RemoteConfigEntry {
-	name?: string;
-	downloadUrl?: string;
-}
-
-function baseOf(url: string): string {
-	return url.replace(/\/+$/, "");
-}
+import { promptServerBase } from "./installServer";
 
 /** Add a folder fsPath to `nvmstudio.nvm.layoutRoots` (global), avoiding dups. */
 export async function ensureLayoutRoot(fsPath: string): Promise<void> {
@@ -31,72 +26,45 @@ export async function ensureLayoutRoot(fsPath: string): Promise<void> {
 	await config.update("layoutRoots", [...current, fsPath], vscode.ConfigurationTarget.Global);
 }
 
-/**
- * Download every `*.nvmlayout.json` the server advertises at `${base}/v1/configs`
- * into the unified NVM Studio conf home and register that folder in
- * `nvmstudio.nvm.layoutRoots`. Returns how many descriptors were written and the
- * target folder. Shared by the standalone config command and the combined
- * "install vendor pack" flow.
- */
-export async function downloadConfigsFromBase(
+export async function listRemoteConfigs(base: string): Promise<RemoteConfig[]> {
+	return parseConfigListing(await fetchJson(`${base}/v1/configs`));
+}
+
+/** Download `configs` into `<home>/conf/<path>` and register their folders as layout roots. */
+export async function installConfigs(
 	base: string,
+	configs: readonly RemoteConfig[],
 ): Promise<{ installed: number; confDir: vscode.Uri }> {
 	const confDir = nvmStudioConfUri();
-	const listRes = await fetch(`${base}/v1/configs`);
-	if (!listRes.ok) {
-		throw new Error(`List failed: ${listRes.status} ${listRes.statusText}`);
-	}
-	const payload = (await listRes.json()) as { configs?: RemoteConfigEntry[] };
-	const entries = Array.isArray(payload.configs) ? payload.configs : [];
-	if (entries.length === 0) {
-		return { installed: 0, confDir };
-	}
-
-	await vscode.workspace.fs.createDirectory(confDir);
+	const folders = new Set<string>();
 	let installed = 0;
-	for (const entry of entries) {
-		const name = typeof entry.name === "string" ? entry.name : "";
-		if (!name.toLowerCase().endsWith(".nvmlayout.json")) {
-			continue;
-		}
-		const safeName = name.replace(/^.*[\\/]/, "");
-		const downloadUrl =
-			typeof entry.downloadUrl === "string" && entry.downloadUrl.length > 0
-				? new URL(entry.downloadUrl, `${base}/`).toString()
-				: `${base}/v1/configs/${encodeURIComponent(safeName)}`;
-		const fileRes = await fetch(downloadUrl);
-		if (!fileRes.ok) {
-			continue;
-		}
-		const content = await fileRes.text();
-		await vscode.workspace.fs.writeFile(
-			vscode.Uri.joinPath(confDir, safeName),
-			new TextEncoder().encode(content),
-		);
+	for (const config of configs) {
+		const parts = config.path.split("/");
+		const folder = vscode.Uri.joinPath(confDir, ...parts.slice(0, -1));
+		await writeText(vscode.Uri.joinPath(folder, parts[parts.length - 1]), await fetchText(configFileUrl(base, config)));
+		folders.add(folder.fsPath);
 		installed++;
 	}
-	if (installed > 0) {
-		await ensureLayoutRoot(confDir.fsPath);
+	for (const folder of folders) {
+		await ensureLayoutRoot(folder);
 	}
 	return { installed, confDir };
 }
 
-/** Register the "Install Layout Configs from URL" command. */
-export function registerConfigInstallCommand(): vscode.Disposable {
+/** Register the "Install Layout Configs from URL" command (installs every descriptor the server has). */
+export function registerConfigInstallCommand(context: vscode.ExtensionContext): vscode.Disposable {
 	return vscode.commands.registerCommand("nvmStudio.nvm.installConfigsFromUrl", async () => {
-		const input = await vscode.window.showInputBox({
-			title: "Install layout configs from server",
-			prompt: "Server base URL (the /v1/configs endpoint is used)",
-			placeHolder: "http://127.0.0.1:7788",
-			validateInput: v => (/^https?:\/\/.+/.test(v) ? undefined : "Enter an http(s) URL"),
-		});
-		if (!input) {
+		const base = await promptServerBase(
+			context,
+			"Install layout configs from server",
+			"Server base URL (the /v1/configs endpoint is used)",
+		);
+		if (!base) {
 			return;
 		}
-		const base = baseOf(input);
 
 		try {
-			const { installed, confDir } = await downloadConfigsFromBase(base);
+			const { installed, confDir } = await installConfigs(base, await listRemoteConfigs(base));
 			if (installed === 0) {
 				void vscode.window.showInformationMessage(
 					"Server has no layout configs to install.",

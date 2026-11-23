@@ -114,6 +114,18 @@ build({
 	outfile: "dist/nvmCustomViews.js",
 });
 
+// Build the NVM Resources webview (plain DOM renderer).
+build({
+	entryPoints: ["media/nvm-resources/resources.ts"],
+	tsconfig: "./tsconfig.json",
+	bundle: true,
+	external: ["vscode"],
+	sourcemap: watch ? "inline" : false,
+	minify,
+	platform: "browser",
+	outfile: "dist/nvmResources.js",
+});
+
 // Build the webview editors
 build({
 	entryPoints: ["media/editor/hexEdit.tsx"],
@@ -163,4 +175,7 @@ fs.copyFileSync("media/nvm-blocks/blocksTable.css", "dist/nvmBlocksTable.css");
 
 // Ship the Custom Views stylesheet (static file, referenced by the webview).
 fs.copyFileSync("media/nvm-custom/customViews.css", "dist/nvmCustomViews.css");
+
+// Ship the Resources panel stylesheet.
+fs.copyFileSync("media/nvm-resources/resources.css", "dist/nvmResources.css");
 

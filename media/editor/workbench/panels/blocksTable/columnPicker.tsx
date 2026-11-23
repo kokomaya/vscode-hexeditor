@@ -5,6 +5,7 @@
 
 import React from "react";
 import { BASE_COLUMN_KEYS, TableColumn } from "../../../../../shared/nvm/views/blocksTableModel";
+import { toggleColumn } from "../../../../../shared/nvm/views/tableQuery";
 import { throwOnUndefinedAccessInDev } from "../../../util";
 import _style from "./blocksTable.css";
 
@@ -18,16 +19,7 @@ export const ColumnPicker: React.FC<{
 	onClose(): void;
 }> = ({ all, selected, onChange, onClose }) => {
 	const current = new Set(selected ?? all.map(c => c.key));
-	const toggle = (key: string) => {
-		const next = new Set(current);
-		if (next.has(key)) {
-			next.delete(key);
-		} else {
-			next.add(key);
-		}
-		const keys = all.map(c => c.key).filter(k => next.has(k));
-		onChange(keys.length === all.length ? undefined : keys);
-	};
+	const toggle = (key: string) => onChange(toggleColumn(all, selected, key));
 
 	return (
 		<div className={style.columnPicker} onKeyDown={e => e.key === "Escape" && onClose()}>

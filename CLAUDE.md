@@ -40,7 +40,7 @@ npm run package:vsix       # compile + vsce package → dist/nvm-studio-hexedito
 webview or worker you must add its entry here:
 - Extension host: `src/extension.ts` → `dist/extension.js` (node) and `dist/web/extension.js` (browser).
 - Webviews (browser): `media/editor/hexEdit.tsx` → `dist/editor.js` (React+Recoil, with SVGR + CSS-modules plugins);
-  `media/data_inspector/inspector.ts`; `media/nvm-blocks/blocksTable.ts`; `media/nvm-custom/customViews.ts`.
+  `media/data_inspector/inspector.ts`; `media/nvm-blocks/blocksTable.ts`; `media/nvm-custom/customViews.ts`; `media/nvm-resources/resources.ts` (Resources panel).
 - Workers: `shared/diffWorker.ts` → `dist/diffWorker.js`.
 - **External engine packs**: `engines/vector-fee-v3/src/index.ts` is built to
   `dist/engines/vector-fee-v3/` and its `engine.json` copied alongside. These are **loaded at
@@ -122,6 +122,24 @@ bar). Hex shortcuts are scoped via `media/editor/panelScope.ts`; context menus v
 questions) via the `GetNvmInsights` request; the toolbar search is pure `shared/nvm/views/unifiedSearch.ts`. `src/nvm/onboarding/`: open-sample + walkthrough commands; pages in
 `walkthrough/` (not `media/`, which `.vscodeignore` excludes); synthetic sample in `samples/basic-log/`
 (regenerate with `tools/makeSampleDump.ts`; guarded by `src/test/nvmSample.test.ts`).
+
+### Annotations, report, notes from chat, skill install
+- Every interactive annotation path (webview messages, hex/table/tree context-menu commands) goes through
+  `src/nvm/annotations/annotationInteractions.ts` (prompt sentinels `__prompt__` / `prompt: true`, opens a new
+  note right after creation). The provider re-pushes annotations on `AnnotationService.onDidChange`, so writers
+  never push to the webview themselves.
+- Report = `src/nvm/report/reportGenerator.ts` (Overview order + findings from `caps.insights`, attached late via
+  `ReportBuilder.setInsightsSource`) + `reportAnnotations.ts`.
+- `@nvm /note [instruction]`: `src/nvm/ai/chatNote.ts` (vscode side) + pure `conclusionNote.ts`.
+- Install server = `server/index.js` composing route modules `engines.js` (`engines/<vendor>/[<layout>/]`, id = folder
+  path), `configs.js` (`conf/**/*.nvmlayout.json`), `skills.js` (+ `level.json` project binding `engine`/`conf`);
+  ready-to-run data root in `server/demo/`. Client: "Install from Server" = `src/nvm/install/serverInstall.ts`
+  (catalog → target pick → pure `shared/nvm/install/installPlan.ts`, nearest level wins per binding field); listing
+  validation in pure `shared/nvm/install/remote*.ts` + `shared/nvm/skills/remoteSkills.ts`; `EngineManager` resolves
+  `"engine"` by folder path or legacy manifest id. Server address (bare IP ok) via `src/nvm/discovery/installServer.ts`.
+- Skill hierarchy (product → platform → project) is folders only; pure rules in `shared/nvm/skills/hierarchy.ts`
+  (visibility = context folder + ancestors, nearest wins). Context = descriptor `skillContext` > setting
+  `nvmstudio.nvm.skills.context` (`SkillRegistry.contextFor`); picker in `src/nvm/skills/skillContextCommand.ts`.
 
 ### AI surfaces
 One vendor-blind facade, `NvmCapabilities` (`src/nvm/ai/nvmCapabilities.ts`), backs both:

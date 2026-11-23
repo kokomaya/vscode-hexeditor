@@ -16,6 +16,9 @@ const fileImports = [
 	() => import("./nvmWorkbench.test"),
 	() => import("./nvmSample.test"),
 	() => import("./nvmDiagnostics.test"),
+	() => import("./nvmNotesReport.test"),
+	() => import("./nvmSkillHierarchy.test"),
+	() => import("./nvmServerInstall.test"),
 ];
 
 export async function run(): Promise<void> {

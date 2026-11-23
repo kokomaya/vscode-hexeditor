@@ -18,6 +18,7 @@ import { registerLmTools } from "./nvm/ai/lmTools";
 import { NvmCapabilities } from "./nvm/ai/nvmCapabilities";
 import { registerShowCapabilities } from "./nvm/ai/showCapabilities";
 import { registerAnnotationCommands } from "./nvm/annotations/annotationCommands";
+import { AnnotationInteractions } from "./nvm/annotations/annotationInteractions";
 import { AnnotationService } from "./nvm/annotations/annotationService";
 import { parseArxmlFile } from "./nvm/arxmlParser";
 import { mapBlocksToBuffer } from "./nvm/blockMapper";
@@ -29,9 +30,15 @@ import { registerConfigInstallCommand } from "./nvm/discovery/configInstall";
 import { invalidateDependencyResolver } from "./nvm/discovery/fileIndex";
 import { registerReselectDependency } from "./nvm/discovery/reselectCommand";
 import { registerEngineCommands } from "./nvm/engines/engineCommands";
-import { registerReportCommands } from "./nvm/report/reportCommands";
+import { EngineManager } from "./nvm/engines/engineManager";
+import { registerServerInstallCommand } from "./nvm/install/serverInstall";
+import { registerReportCommands, ReportBuilder } from "./nvm/report/reportCommands";
 import { registerReportPreview } from "./nvm/report/reportPanel";
 import { registerSkillCommands } from "./nvm/skills/skillCommands";
+import { initContextMemory } from "./nvm/skills/contextMemory";
+import { registerSkillContextCommand } from "./nvm/skills/skillContextCommand";
+import { registerResourcesPanel } from "./nvm/resources/resourcesPanel";
+import { registerSkillInstallCommand } from "./nvm/skills/skillInstall";
 import { SkillRegistry } from "./nvm/skills/skillRegistry";
 import { registerNvmStudioView } from "./nvm/ui/nvmStudioTree";
 import { WorkbenchHost } from "./nvm/workbench/workbenchHost";
@@ -188,11 +195,18 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(copyOffsetAsDec, copyOffsetAsHex);
 	context.subscriptions.push(compareSelectedCommand);
 	context.subscriptions.push(loadNvmArxmlCommand);
-	context.subscriptions.push(...registerEngineCommands(context));
-	context.subscriptions.push(registerConfigInstallCommand());
+	initContextMemory(context.globalState);
+	const engineManager = new EngineManager(context);
+	context.subscriptions.push(...registerEngineCommands(engineManager));
+	context.subscriptions.push(registerServerInstallCommand(context, engineManager));
+	context.subscriptions.push(registerConfigInstallCommand(context));
+	context.subscriptions.push(registerSkillInstallCommand(context));
 	const annotationService = new AnnotationService(context);
 	const customViewService = new CustomViewService(context);
-	context.subscriptions.push(...registerAnnotationCommands(registry, annotationService));
+	const annotationInteractions = new AnnotationInteractions(annotationService);
+	context.subscriptions.push(
+		...registerAnnotationCommands(registry, annotationService, annotationInteractions),
+	);
 	context.subscriptions.push(...registerNvmStudioView(registry, annotationService));
 	context.subscriptions.push(...registerNvmBlocksView(registry, context.workspaceState));
 	context.subscriptions.push(
@@ -201,8 +215,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		...registerNvmCustomViewsPanel(context.extensionUri, registry, customViewService),
 	);
-	context.subscriptions.push(...registerReportCommands(registry, annotationService));
-	context.subscriptions.push(...registerReportPreview(registry, annotationService));
+	const reports = new ReportBuilder(registry, annotationService);
+	context.subscriptions.push(...registerReportCommands(reports));
+	context.subscriptions.push(...registerReportPreview(reports));
 	// One vendor-blind capability facade backs both AI surfaces (LM tools + chat).
 	// Skills: external, pure-data knowledge (playbooks + block knowledge) shared by
 	// the decode pass, the AI surfaces and the Skills view.
@@ -228,7 +243,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		loadDiagnostics,
 	);
 	workbenchHost.setInsightsSource(() => nvmCapabilities.insights.insights());
+	reports.setInsightsSource(() => nvmCapabilities.insights.insights());
 	context.subscriptions.push(...registerSkillCommands(skillRegistry, registry, nvmCapabilities.skills));
+	context.subscriptions.push(registerSkillContextCommand(skillRegistry, registry));
+	context.subscriptions.push(
+		registerResourcesPanel({ context, skills: skillRegistry, registry, engines: engineManager, diagnostics: loadDiagnostics }),
+	);
 	context.subscriptions.push(...registerLmTools(nvmCapabilities));
 	context.subscriptions.push(...registerChatParticipant(nvmCapabilities));
 	context.subscriptions.push(registerShowCapabilities(context));

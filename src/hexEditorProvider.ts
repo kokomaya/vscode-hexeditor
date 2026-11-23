@@ -30,6 +30,7 @@ import { disposeAll } from "./dispose";
 import { HexDocument } from "./hexDocument";
 import { describeDescriptor, LoadDiagnosticsStore } from "./nvm/diagnostics/loadDiagnostics";
 import { HexEditorRegistry } from "./hexEditorRegistry";
+import { AnnotationInteractions } from "./nvm/annotations/annotationInteractions";
 import { AnnotationService } from "./nvm/annotations/annotationService";
 import { addBlockToCustomView } from "./nvm/customViews/addToView";
 import { CustomViewService } from "./nvm/customViews/customViewService";
@@ -97,6 +98,8 @@ interface NvmLoadResult {
 	pendingHook?: { dir: string; config: LayoutConfig; input: LayoutInput };
 	/** Opaque layout identifiers (provider id, descriptor vendor/engine) for skill `appliesTo.layout`. */
 	layoutIds?: string[];
+	/** Skill hierarchy context declared by the matched descriptor (`skillContext`). */
+	skillContext?: string;
 }
 
 export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocument> {
@@ -156,6 +159,8 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		// Keep every open editor's custom views in sync with edits made elsewhere
 		// (sidebar, commands, other panels).
 		const customViewWatch = customViews.onDidChange(uri => provider.refreshCustomViews(uri));
+		// Annotations change from many places (webview, commands, sidebar, AI notes).
+		const annotationWatch = annotations.onDidChange(uri => provider.refreshAnnotations(uri));
 		provider.updateProfileStatusBar();
 		// When the discovery roots change, re-parse every open dump so newly found
 		// descriptors / source files take effect without a reopen.
@@ -174,6 +179,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 			selectProfileCmd,
 			activeWatch,
 			customViewWatch,
+			annotationWatch,
 			new vscode.Disposable(() => provider._profileStatusBar?.dispose()),
 			cfgWatch,
 		);
@@ -192,6 +198,8 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		private readonly _workbench?: WorkbenchHost,
 		private readonly _diagnostics?: LoadDiagnosticsStore,
 	) {}
+
+	private readonly _interactions = new AnnotationInteractions(this._annotations);
 
 	/** Lazily-created manager for installed external engine packs. */
 	private _engineManager?: EngineManager;
@@ -425,6 +433,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 				});
 				// Block skills decode/document bound blocks BEFORE anyone sees them, so
 				// the editor, inspector, tables, reports and AI share one enriched view.
+				this._skills?.setSkillContext(document.uri, result?.skillContext);
 				if (this._skills && result) {
 					await applySkillsToBlocks(
 						this._skills,
@@ -671,7 +680,11 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		};
 		const resolved = resolveNvmBlocks(ctx);
 		return resolved
-			? { resolved, layoutIds: [resolved.providerId, ...configs.map(c => c.vendor).filter(Boolean)] }
+			? {
+					resolved,
+					layoutIds: [resolved.providerId, ...configs.map(c => c.vendor).filter(Boolean)],
+					skillContext: configs.find(c => c.skillContext)?.skillContext,
+				}
 			: undefined;
 	}
 
@@ -797,6 +810,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 				engineScriptUri: config.engine ? undefined : scriptUri,
 				pendingHook,
 				layoutIds,
+				skillContext: config.skillContext,
 			};
 		} catch (e) {
 			void vscode.window.showErrorMessage(
@@ -1564,7 +1578,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 				this.writeEditorSettings(message.editorSettings);
 				break;
 			case MessageType.NvmAnnotationCommand:
-				await this.handleAnnotationCommand(messaging, document, message.command);
+				await this.handleAnnotationCommand(document, message.command);
 				break;
 			case MessageType.NvmCustomViewCommand:
 				await this.handleCustomViewCommand(messaging, document, message.command);
@@ -1692,58 +1706,13 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		}
 	}
 
-	/** Apply an annotation mutation requested by the webview, then re-push. */
+	/** Apply an annotation mutation requested by the webview (prompts + note opening included). */
 	private async handleAnnotationCommand(
-		messaging: ExtensionHostMessageHandler,
 		document: HexDocument,
 		command: import("../shared/protocol").NvmAnnotationCommand,
 	): Promise<void> {
 		try {
-			if (command.kind === "openNote") {
-				const uri = this._annotations.noteUri(document.uri, command.id);
-				if (uri) {
-					await vscode.window.showTextDocument(uri, { preview: false });
-				}
-				return;
-			}
-			// A tag assignment with the sentinel id prompts the user to pick or
-			// create a tag (the webview cannot show input UI itself).
-			if (command.kind === "assignTag" && command.tagId === "__prompt__") {
-				const tagId = await this.promptForTag(document);
-				if (!tagId) {
-					return;
-				}
-				command = { ...command, tagId };
-			}
-			// The webview asked to prompt for a bookmark label on creation.
-			if (command.kind === "addBookmark" && command.prompt) {
-				const label = await vscode.window.showInputBox({
-					title: "New bookmark",
-					prompt: "Bookmark label (optional)",
-					value: command.label ?? `0x${command.offset.toString(16).toUpperCase()}`,
-				});
-				if (label === undefined) {
-					return; // cancelled → don't create
-				}
-				command = { kind: "addBookmark", offset: command.offset, label: label || undefined };
-			}
-			// The webview asked to edit an existing bookmark's label.
-			if (command.kind === "renameBookmark" && command.label === "__prompt__") {
-				const bookmarkId = command.id;
-				const set = await this._annotations.get(document.uri);
-				const current = set.bookmarks.find(b => b.id === bookmarkId)?.label ?? "";
-				const label = await vscode.window.showInputBox({
-					title: "Rename bookmark",
-					prompt: "Bookmark label (leave empty to clear)",
-					value: current,
-				});
-				if (label === undefined) {
-					return; // cancelled
-				}
-				command = { kind: "renameBookmark", id: bookmarkId, label: label || undefined };
-			}
-			await this._annotations.apply(document.uri, command);
-			await this.pushAnnotations(messaging, document);
+			await this._interactions.run(document.uri, command);
 		} catch (e) {
 			void vscode.window.showErrorMessage(
 				`NVM annotation failed: ${e instanceof Error ? e.message : String(e)}`,
@@ -1751,31 +1720,13 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		}
 	}
 
-	/** Prompt to pick an existing tag or create a new one; returns its id. */
-	private async promptForTag(document: HexDocument): Promise<string | undefined> {
-		const set = await this._annotations.get(document.uri);
-		const CREATE = "$(add) Create new tag…";
-		const pick = await vscode.window.showQuickPick(
-			[CREATE, ...set.tags.map(t => `${t.label}`)],
-			{ title: "Assign NVM tag", placeHolder: "Pick a tag or create one" },
-		);
-		if (!pick) {
-			return undefined;
+	/** Re-push a dump's annotations to every editor showing it (after any change). */
+	public refreshAnnotations(uri: vscode.Uri): void {
+		for (const document of this._registry.documentsByUri(uri)) {
+			for (const messaging of this._registry.getMessaging(document)) {
+				void this.pushAnnotations(messaging, document);
+			}
 		}
-		if (pick !== CREATE) {
-			return set.tags.find(t => t.label === pick)?.id;
-		}
-		const label = await vscode.window.showInputBox({
-			title: "New tag",
-			prompt: "Tag name",
-			validateInput: v => (v.trim() ? undefined : "Enter a name"),
-		});
-		if (!label) {
-			return undefined;
-		}
-		await this._annotations.apply(document.uri, { kind: "createTag", label });
-		const updated = await this._annotations.get(document.uri);
-		return updated.tags.find(t => t.label === label)?.id;
 	}
 
 	private publishEdit(

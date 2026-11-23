@@ -9,18 +9,13 @@
  */
 
 import * as vscode from "vscode";
-import { HexEditorRegistry } from "../../hexEditorRegistry";
-import { AnnotationService } from "../annotations/annotationService";
-import { buildActiveReport } from "./reportCommands";
+import { ReportBuilder } from "./reportCommands";
 
 let currentPanel: vscode.WebviewPanel | undefined;
 
 /** Open (or reveal) the report preview for the active dump. */
-export async function openReportPreview(
-	registry: HexEditorRegistry,
-	annotations: AnnotationService,
-): Promise<void> {
-	const report = await buildActiveReport(registry, annotations);
+export async function openReportPreview(reports: ReportBuilder): Promise<void> {
+	const report = await reports.build();
 	if (!report) {
 		void vscode.window.showWarningMessage("Open an NVM dump first to preview a report.");
 		return;
@@ -107,13 +102,10 @@ async function handleMessage(
 }
 
 /** Register the report preview + export commands. */
-export function registerReportPreview(
-	registry: HexEditorRegistry,
-	annotations: AnnotationService,
-): vscode.Disposable[] {
+export function registerReportPreview(reports: ReportBuilder): vscode.Disposable[] {
 	return [
 		vscode.commands.registerCommand("nvmStudio.nvm.openReportPreview", () =>
-			openReportPreview(registry, annotations),
+			openReportPreview(reports),
 		),
 	];
 }

@@ -285,7 +285,8 @@ export type NvmAnnotationCommand =
 	| { kind: "assignTag"; tagId: string; start: number; end: number }
 	| { kind: "createAndAssignTag"; label: string; color?: string; start: number; end: number }
 	| { kind: "unassignTag"; assignmentId: string }
-	| { kind: "addNote"; start: number; end: number; title?: string; body?: string }
+	/** `prompt`: ask for the title first; the host opens the new note for editing. */
+	| { kind: "addNote"; start: number; end: number; title?: string; body?: string; prompt?: boolean }
 	| { kind: "openNote"; id: string }
 	| { kind: "deleteNote"; id: string };
 

@@ -120,6 +120,9 @@ export class SkillCapabilities {
 			const near = scoreSkills(n, c.index.skills).slice(0, 3).map(x => x.meta.name);
 			throw new NvmCapabilityError(`No skill named "${name}".${near.length ? ` Did you mean: ${near.join(", ")}?` : ""}`);
 		}
+		if (!s.enabled) {
+			throw new NvmCapabilityError(`Skill "${s.name}" is inactive${s.disabledByUser ? " (turned off by the user)" : " (enabled: false in SKILL.md)"} and cannot be used.`);
+		}
 		return s;
 	}
 
@@ -149,7 +152,7 @@ export class SkillCapabilities {
 		const names = idx.slice(0, MAX_BOUND).map(i => c.blocks![i].name ?? c.blocks![i].id);
 		const composed = meta.uses
 			.map(u => c.index.skills.find(s => s.name === u))
-			.filter((s): s is SkillMeta => !!s)
+			.filter((s): s is SkillMeta => !!s?.enabled)
 			.map(s => this.summary(s, c));
 		return {
 			...this.summary(meta, c),

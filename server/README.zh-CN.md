@@ -1,192 +1,141 @@
 # 生产环境：从 0 到解析 block
 
-本手册覆盖生产环境完整流程：部署引擎服务 → 安装引擎 → 放置配置 → 打开 dump 解析出 block。
+本手册覆盖生产环境完整流程：部署服务器 → 组织 engine / conf / skills → 插件按项目一键安装 → 打开 dump 解析出 block。
 
 解析 block 需要三样东西同时到位：
 
-1. 引擎(engine)：已安装,且 id 与描述文件里的 `engine` 一致。
+1. 引擎(engine)：已安装,且描述文件里的 `engine` 能解析到它(`vector/fee-v3` 这种文件夹路径,或旧的 `vector-fee-v3` 清单 id)。
 2. 描述文件(`*.nvmlayout.json`)：能被发现。
 3. 描述文件声明的源文件(如 `Fee_Lcfg.c`、`*.h`、`*.arxml`)：能被发现。
 
-缺任意一样都解析不出 block。
+前两样可以从服务器按项目一键安装；源文件属于项目工程,需在本地就位(第 4 步)。
 
 ---
 
 ## 第 0 步：前置条件
 
 1. 桌面版 VS Code(非 web),工作区受信任(Workspace Trust)。
-2. 设置 `nvmstudio.nvm.allowExternalEngines = true`。
+2. 设置 `nvmstudio.nvm.allowExternalEngines = true`(安装完成的提示里有直达按钮)。
 
 ---
 
-## 第 1 步：部署引擎服务(server)
+## 第 1 步：部署服务器(5 分钟)
 
-引擎服务用于分发引擎脚本,供 VS Code 从 URL 安装。
-
-引擎在服务端的目录结构：
-
-```
-<数据根>/engines/<engineId>/<version>/
-    engine.json      # 清单，entry 指向脚本文件名
-    <脚本文件>.js     # 引擎脚本（文件名由 engine.json 的 entry 决定）
-<数据根>/conf/           # 布局描述文件(*.nvmlayout.json)
-```
-
-数据根统一确定(去掉了 engine-registry-data 的特殊处理)：
-
-- 环境变量 `NVM_ENGINE_REGISTRY_HOME`,未设置时用启动目录。
-- 引擎固定在 `<数据根>/engines`,配置固定在 `<数据根>/conf`。
-
-启动服务(推荐显式指定数据根)：
+仓库里的 `server/demo/` 就是一个可以直接运行的数据根,照着它的结构放自己的内容即可：
 
 ```powershell
-$env:NVM_ENGINE_REGISTRY_HOME = "D:\path\to\registry"
-node dist/server/nvm-engine-install-server.js
+# 方式 A：直接用仓库源码
+server\demo\start.cmd                  # Linux/macOS: sh server/demo/start.sh
+
+# 方式 B：打包后部署(npm run compile 会生成 dist/server/,含 data/ = demo + 已构建的 vector 引擎)
+#   把 dist/server 整个拷到服务器机器上：
+start-nvm-engine-install-server.cmd    # 或 nvm-engine-install-server.exe(需自己设 NVM_ENGINE_REGISTRY_HOME)
 ```
 
-或用 exe：
-
-```powershell
-$env:NVM_ENGINE_REGISTRY_HOME = "D:\path\to\registry"
-.\dist\server\nvm-engine-install-server.exe
-```
-
-启动日志的 `Data root:` 必须指向包含 `engines/` 的目录。
+让其他机器能访问：启动前设置 `NVM_ENGINE_SERVER_HOST=0.0.0.0`(并放通防火墙端口 7788)。
+启动日志的 `Data root:` 必须指向包含 `engines/`、`conf/`、`skills/` 的目录。浏览器打开 `http://<IP>:7788/v1/engines` 能看到列表即部署成功。
 
 环境变量：
 
-- `NVM_ENGINE_SERVER_HOST` 默认 `127.0.0.1`
+- `NVM_ENGINE_SERVER_HOST` 默认 `127.0.0.1`(对外服务用 `0.0.0.0`)
 - `NVM_ENGINE_SERVER_PORT` 默认 `7788`
-- `NVM_ENGINE_REGISTRY_HOME` 数据根
+- `NVM_ENGINE_REGISTRY_HOME` 数据根(默认启动目录；`start.cmd` 指向自己所在目录)
 - `NVM_ENGINE_SERVER_ADMIN_TOKEN` 发布接口所需
-
-接口：
-
-- `GET /health`
-- `GET /v1/engines`
-- `GET /v1/engines/{id}/{version}`
-- `GET /v1/engines/{id}/{version}/engine.js`
-- `POST /v1/admin/engines/{id}/{version}`（需头 `x-api-token`）
-- `GET /v1/configs`（列出 `<数据根>/conf` 下的 `*.nvmlayout.json`）
-- `GET /v1/configs/{name}`（下载单个描述文件）
 
 ---
 
-## 第 2 步：把引擎放到服务端
+## 第 2 步：组织数据根
 
-### 方式 A：手工落盘
+```
+<数据根>/
+  engines/                                  按 AUTOSAR 供应商 → layout 版本 分类(代码)
+    vector/
+      vendor.json                           可选 { "title": "Vector MICROSAR" }
+      fee-v3/  engine.json + 入口脚本        engine id = vector/fee-v3
+      fee-v4/  …
+    eb/
+      engine.json + 入口脚本                 供应商只有一种 layout 时可以不分版本：id = eb
+  conf/                                     项目的描述文件(数据),结构随意,建议与 skills 一致
+    radar/chipA/customerB/customerB.nvmlayout.json
+  skills/                                   产品 → 平台 → 项目(见第 6 步)
+    radar/
+      level.json
+      chipA/
+        level.json                          { "engine": "vector/fee-v3" }   平台绑定 engine
+        customerB/
+          level.json                        { "conf": ["radar/chipA/customerB/customerB.nvmlayout.json"] }
+          <skill>/SKILL.md
+```
 
-按目录结构放置文件,`engine.json` 示例：
+### engines：供应商 / layout 版本
+
+- 含 `engine.json` 的文件夹是一个引擎包,其他文件夹是供应商目录；最多两层(`<供应商>/<layout 版本>`)。
+- 引擎的 id 就是文件夹路径,描述文件写 `"engine": "vector/fee-v3"`。
+- 包的发布版本写在 `engine.json` 的 `version` 里；重新发布会整体替换该文件夹。
+- `engine.json` 示例：
 
 ```json
+{ "id": "vector-fee-v3", "version": "1.2.0", "displayName": "Vector FEE V3", "entry": "vectorFeeV3.engine.js", "sdkVersion": 4 }
+```
+
+  `id` 可选；保留旧 id(`vector-fee-v3`)时,旧描述文件里的 `"engine": "vector-fee-v3"` 仍然能解析。
+- 仓库里构建出来的引擎用 `node server/demo/sync-engines.mjs [数据根]` 同步：包进 `engines/vector/fee-v3/`，引擎自带的标准描述文件进 `conf/vector/fee-v3/`；旧结构(`engines/vector-fee-v3/<版本>/`、`conf/vector*.nvmlayout.json`)会被清掉，其他 conf 不动。
+  服务器机器上可把 `server/sync-from-dist.ps1` 放到数据根运行(它调用同一个脚本，`-Repo` 指定仓库路径)。
+
+### conf：项目描述文件
+
+- `conf/` 下任意层级的 `*.nvmlayout.json`,按相对路径寻址。
+- 描述文件里写 `"engine"`(用哪个引擎)和可选的 `"skillContext": "radar/chipA/customerB"`。
+
+### 项目绑定：`level.json`
+
+每个 产品/平台/项目 文件夹可以放一个 `level.json`,告诉插件这一层用哪个引擎、哪些描述文件：
+
+```jsonc
 {
-  "id": "vector-fee-v3",
-  "version": "1.0.0",
-  "displayName": "Vector FEE V3",
-  "entry": "vectorFeeV3.engine.js",
-  "sdkVersion": 3
+  "title": "customerB 应用项目",          // 显示名称,可用中文
+  "description": "…",
+  "engine": "vector/fee-v3",             // 字符串或数组；engines/ 下的路径
+  "conf": ["radar/chipA/customerB/customerB.nvmlayout.json"]   // conf/ 下的路径
 }
 ```
 
-`entry` 可为任意脚本文件名,下载接口按它返回真实文件。
-
-### 方式 B：发布接口
-
-```powershell
-$headers = @{ "x-api-token" = "your-token" }
-$body = @{
-  engineScript = (Get-Content -Raw .\vectorFeeV3.engine.js)
-  displayName  = "Vector FEE V3"
-  sdkVersion   = 3
-} | ConvertTo-Json
-
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:7788/v1/admin/engines/vector-fee-v3/1.0.0" `
-  -Headers $headers -ContentType "application/json" -Body $body
-```
+- **向下继承,最近的一层生效**(按字段)：平台写了 `engine`,其下所有项目都用它；某个项目另写 `engine` 就覆盖平台的。
+- 插件安装某个项目时会装：绑定的引擎 + 绑定的描述文件 + `skillContext` 等于该项目的描述文件 + 这些描述文件引用的引擎 + 该项目可见的 skills。
 
 ---
 
-## 第 3 步：VS Code 安装引擎
+## 第 3 步：VS Code 按项目一键安装
 
-### 从 URL 安装
+1. 命令面板执行 **NVM: Install from Server (Project Engines + Configs + Skills)…**
+2. 输入服务器地址：直接写 IP 即可(`10.1.2.3` → `http://10.1.2.3:7788`),也可以写 `host:端口` 或完整 URL；上次的地址会被记住。
+3. 选择你做的 产品 / 平台 / 项目(每行显示它会装的引擎、conf 数和 skill 数),或 "Everything on the server"。
+4. 确认引擎安装(引擎是代码,统一一次确认)。
+5. 完成后：
+   - 引擎在 `%USERPROFILE%\nvmstudio\engines\<供应商>\<版本>\`；
+   - 描述文件在 `%USERPROFILE%\nvmstudio\conf\<同服务器路径>`,所在文件夹自动加入 `nvmstudio.nvm.layoutRoots`；
+   - skills 在 `%USERPROFILE%\nvmstudio\skills\…`；
+   - 所选项目自动成为 skill 上下文(`nvmstudio.nvm.skills.context`)。
 
-1. 命令面板执行 `NVM: Install Engine from URL...`
-2. 输入：
-
-```
-http://127.0.0.1:7788/v1/engines/vector-fee-v3/1.0.0/engine.js
-```
-
-3. 确认 Download & install。
-
-引擎安装到统一的用户目录：`%USERPROFILE%\nvmstudio\engines\<id>\`(可用环境变量 `NVMSTUDIO_HOME` 覆盖)。按 id 自动解析,nvmlayout 里写 `engine: vector-fee-v3` 即可,无需额外设置。
-
-要点：
-
-- id 从 URL 中 `engines/<id>` 段自动识别(得到 `vector-fee-v3`)。
-- 成功提示会显示安装目录(扩展全局存储下的 `engines/<id>/`)。
-- 安装后的 id **必须**等于描述文件里的 `engine` 值,否则生产环境解析不出 block。
-
-### 或本地安装
-
-1. 命令面板执行 `NVM: Install Engine...`
-2. 选择含 `engine.json` 的引擎目录,或单个 `.engine.js` 文件。
-
-### 核对
-
-命令面板执行 `NVM: Manage Engines`,确认列表里是 `vector-fee-v3`,不是 `engine`。
+统一用户目录可用环境变量 `NVMSTUDIO_HOME` 覆盖。单独安装的命令仍然可用：`NVM: Install Layout Configs from URL…`(全部描述文件)、`NVM: Install Skills from Server…`、`NVM: Install Engine…`(本地包)。
+`NVM: Manage Engines` 列出已安装引擎(显示 `供应商/版本`)并可删除。
 
 ---
 
-## 第 4 步：放置描述文件与源文件
+## 第 4 步：源文件(描述文件 `sources` 声明的文件)
 
-这两类是**项目/平台配置**,不随引擎服务安装,需各自就位。
+描述文件的发现路径(命中其一即可)：dump 所在目录、`./conf`、`../conf`、`nvmstudio.nvm.layoutRoots`(第 3 步已自动配置)。
 
-### 描述文件 `*.nvmlayout.json`
-
-发现路径(命中其一即可)：
-
-1. dump 所在目录
-2. dump 目录下 `./conf`
-3. dump 上级目录下 `../conf`
-4. 设置 `nvmstudio.nvm.layoutRoots` 里配置的全局目录(及其 `conf/` 子目录)
-
-推荐从服务器一键安装(自动写设置)：
-
-1. 先把描述文件放到服务端 `<数据根>/conf/`。
-2. 命令面板执行 `NVM: Install Layout Configs from URL...`
-3. 输入服务器基址 `http://127.0.0.1:7788`
-4. 扩展会把描述文件下载到统一用户目录 `%USERPROFILE%\nvmstudio\conf`,并**自动**把该目录写入 `nvmstudio.nvm.layoutRoots`。
-
-也可手动配置(全局共享目录)：
-
-```jsonc
-"nvmstudio.nvm.layoutRoots": [
-  "C:\\Users\\<you>\\nvmstudio\\conf"
-]
-```
-
-`layoutRoots` 支持工作区外的绝对路径,直接扫描目录本身和它的 `conf/`。
-
-### 源文件(描述文件 `sources` 声明的文件)
-
-发现路径：
+源文件发现路径：
 
 1. dump 目录 / `./conf` / `../conf`
 2. 设置 `nvmstudio.nvm.workspaceRoots` 里配置的目录(递归查找)
-
-把源文件所在的项目目录配进去：
 
 ```jsonc
 "nvmstudio.nvm.workspaceRoots": [
   "${workspaceFolder}/src/DaVinci/ARS620_S2A2_EM_B2_2CAN"
 ]
 ```
-
-`workspaceRoots` 用递归索引,面向工作区内的项目目录。
-
-### 三类目录职责区分(不重复)
 
 - `layoutRoots`：放描述文件(全局目录,可在工作区外)
 - `workspaceRoots`：找源文件(项目目录,工作区内)
@@ -200,13 +149,64 @@ http://127.0.0.1:7788/v1/engines/vector-fee-v3/1.0.0/engine.js
 2. 首次运行引擎会弹安全确认,选择 Run once 或 Always run this file。
 3. 若配置正确,block 会被解析并着色,NVM Studio 视图里显示 block 列表。
 
+用 demo 验证：部署 `server/demo` 后安装 `radar › chipA › customerB`,把 `samples/basic-log/sample-nvm.mot` 拷到一个空文件夹打开,block 名应为 ResetCounter / DtcMemory / Calibration / Odometer(来自项目描述文件,引擎本身不含项目知识)。
+
+---
+
+## 第 6 步：skills 的层级
+
+skills 放在 `<数据根>/skills/` 下,**只用文件夹分类**：
+
+```
+skills/
+  general-tip/SKILL.md                               通用
+  radar/                                             产品(雷达、摄像头…)
+    level.json                                       可选：title / description / engine / conf
+    reset-counter/SKILL.md                           产品级
+    chipA/                                           平台(芯片平台 / 芯片变种)
+      reset-counter/SKILL.md                         平台级
+      customerB/                                     项目(客户应用项目)
+        reset-counter/SKILL.md                       项目级
+```
+
+- 含 `SKILL.md` 的文件夹是 skill,其他文件夹是层级,最多三层；名字只需在同一个文件夹内唯一,文件夹名可以用中文。
+- 生效范围：上下文所在文件夹及所有上层文件夹的 skill + 通用 skill；重名时离上下文最近的生效。
+- skill 只是数据(Markdown/JSON),服务器和插件都不会执行它,但它会进入 AI 提示词,只安装可信来源的 skill。
+
+---
+
+## 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/health` | 状态与数据根 |
+| GET | `/v1/engines` | `{ engines: [{ id, vendor, layout, manifestId, version, displayName, description, sdkVersion, files }], vendors }` |
+| GET | `/v1/engines/file?engine=<id>&path=<文件>` | 引擎包里的一个文件 |
+| POST | `/v1/admin/engines?engine=<id>` | 发布/替换(`x-api-token`)。body `{ "files": { "engine.json": "…", "x.js": "…" } }` 或 `{ "engineScript": "…", "version", "displayName", "sdkVersion", "id" }` |
+| GET | `/v1/configs` | `{ configs: [{ path, name, vendor, engines, skillContext, downloadUrl }] }` |
+| GET | `/v1/configs/file?path=<相对路径>` | 一个描述文件 |
+| GET | `/v1/skills` | `{ skills: [...], levels: [{ path, level, title, description, engines, configs }] }` |
+| GET | `/v1/skills/file?skill=<id>&path=<文件>` | skill 的一个文件 |
+| POST | `/v1/admin/skills?skill=<id>` | 发布/替换 skill(`x-api-token`),body `{ "files": { "SKILL.md": "…" } }` |
+
+发布时先校验全部路径再写入；不会覆盖供应商/层级文件夹,也不允许把 skill 放进另一个 skill。所有请求路径都限制在数据根内。
+
+发布示例：
+
+```powershell
+$headers = @{ "x-api-token" = "your-token" }
+$body = @{ engineScript = (Get-Content -Raw .\vectorFeeV3.engine.js); version = "1.2.0"; displayName = "Vector FEE V3"; sdkVersion = 4 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:7788/v1/admin/engines?engine=vector/fee-v3" -Headers $headers -ContentType "application/json" -Body $body
+```
+
 ---
 
 ## 常见问题
 
-- 装了引擎仍解析不出 block(调试可用、生产不可用)：安装的 id 不等于描述文件的 `engine`。用 `NVM: Manage Engines` 删掉错误的 `engine`,重新用标准 URL 安装,使 id = `vector-fee-v3`。
-- 配置“没被识别”：多数是引擎没解析出来的表象。先确认引擎 id 正确、描述文件与源文件都能被发现。
-- 安装 404：服务数据根没指向包含 `engines/`(或 `conf/`)的目录,用 `NVM_ENGINE_REGISTRY_HOME` 显式指定后重启服务。数据根统一为 `<root>/engines` 与 `<root>/conf`。
-- 统一用户目录：引擎与 conf 都装在 `%USERPROFILE%\nvmstudio`(可用 `NVMSTUDIO_HOME` 覆盖),分别在 `engines/` 和 `conf/`。
-- 描述文件在工作区外没被发现：描述文件的工作区外发现只走 `nvmstudio.nvm.layoutRoots`,确认已配置。
+- 装了引擎仍解析不出 block：描述文件的 `engine` 解析不到已安装的引擎。用 `NVM: Manage Engines` 看已安装的 `供应商/版本`,描述文件写同样的路径(或该包 `engine.json` 里的 `id`)。
+- 配置“没被识别”：多数是引擎没解析出来的表象。先确认引擎能解析到、描述文件与源文件都能被发现。
+- 安装时列表为空 / 404：服务数据根没指向包含 `engines/`、`conf/`、`skills/` 的目录,用 `NVM_ENGINE_REGISTRY_HOME` 显式指定后重启服务。
+- 别的电脑连不上：服务默认只监听 `127.0.0.1`,设 `NVM_ENGINE_SERVER_HOST=0.0.0.0` 并放通端口。
+- 安装某个项目时提示 "not on the server"：`level.json` 里写的引擎或 conf 路径在服务器上不存在,检查拼写和文件夹。
+- 旧版插件：接口路径已改为 `?engine=` / `?path=` / `?skill=` 查询参数,需要同时升级插件和服务器。
 - 改了服务代码不生效：重启服务进程；改了扩展代码：Developer: Reload Window(或重装 VSIX)。

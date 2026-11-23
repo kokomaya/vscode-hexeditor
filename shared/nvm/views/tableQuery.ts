@@ -107,6 +107,29 @@ export function cycleSort(current: TableSort | undefined, key: string): TableSor
 	return current.dir === 1 ? { key, dir: -1 } : undefined;
 }
 
+/**
+ * Show / hide one column. `selected` undefined means "all columns"; the
+ * result is undefined again when everything ends up visible. The name column
+ * cannot be hidden.
+ */
+export function toggleColumn(
+	all: readonly TableColumn[],
+	selected: readonly string[] | undefined,
+	key: string,
+): string[] | undefined {
+	if (key === BASE_COLUMN_KEYS.name) {
+		return selected ? [...selected] : undefined;
+	}
+	const visible = new Set(selected ?? all.map(c => c.key));
+	if (visible.has(key)) {
+		visible.delete(key);
+	} else {
+		visible.add(key);
+	}
+	const keys = all.map(c => c.key).filter(k => visible.has(k));
+	return keys.length === all.length ? undefined : keys;
+}
+
 /** Normalize an untrusted query (e.g. from an AI tool) into a safe one. */
 export function sanitizeTableQuery(input: unknown): TableQuery {
 	const q = (input ?? {}) as Record<string, unknown>;

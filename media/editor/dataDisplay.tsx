@@ -575,6 +575,7 @@ const NvmHoverPopover: React.FC = () => {
 										start: field?.start ?? block.offset,
 										end: field?.end ?? block.offset + block.length,
 										title: block.name ?? block.id,
+										prompt: true,
 									});
 									hideNow();
 								}}

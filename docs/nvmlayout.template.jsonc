@@ -37,6 +37,8 @@
 // ----------------------------------------------------------------------------
 {
   "vendor": "My ECU (Vector FEE V3)",       // REQUIRED. Free text; used as a name prefix.
+  "skillContext": "radar/chipA/customerB",  // Optional. product[/platform[/project]] — which skill folders apply
+                                            //   (overrides the nvmstudio.nvm.skills.context setting).
   "provider": "vector-fee-v3",              // Selects the Vector engine. When set, "blocks" is ignored.
   "sources": {                              // Aux files the adapter needs: logicalName -> fileName.
     "feeLcfg": "Fee_Lcfg.c"                 //   the core reads it (dump folder / ./conf / ../conf) and

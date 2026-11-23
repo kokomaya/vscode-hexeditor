@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,14 +12,30 @@ const distExe = join(distDir, "nvm-engine-install-server.exe");
 
 mkdirSync(distDir, { recursive: true });
 copyFileSync(sourceFile, distEntry);
+// Route modules required by index.js (pkg follows the relative require).
+for (const mod of ["fsutil.js", "engines.js", "configs.js", "skills.js"]) {
+	copyFileSync(join(repoRoot, "server", mod), join(distDir, mod));
+}
+// A ready-to-run data root: the demo (engines / conf / skills) plus the engine packs built into
+// dist/engines, so copying dist/server to a machine and starting it gives a working server.
+const dataDir = join(distDir, "data");
+if (!existsSync(dataDir)) {
+	cpSync(join(repoRoot, "server", "demo"), dataDir, {
+		recursive: true,
+		filter: f => !/(start\.(cmd|sh)|sync-engines\.mjs)$/.test(f),
+	});
+}
+spawnSync(process.execPath, [join(repoRoot, "server", "demo", "sync-engines.mjs"), dataDir], { stdio: "inherit" });
 
 const cmdContent = [
 	"@echo off",
 	"setlocal",
 	"if not defined NVM_ENGINE_SERVER_PORT set NVM_ENGINE_SERVER_PORT=7788",
 	"if not defined NVM_ENGINE_SERVER_HOST set NVM_ENGINE_SERVER_HOST=127.0.0.1",
-	"if not defined NVM_ENGINE_REGISTRY_HOME set NVM_ENGINE_REGISTRY_HOME=%cd%\\engine-registry-data",
-	"node nvm-engine-install-server.js",
+	"rem A copied server serves its own data\\ folder; NVM_ENGINE_REGISTRY_HOME only applies without one.",
+	"if exist \"%~dp0data\\\" set NVM_ENGINE_REGISTRY_HOME=%~dp0data",
+	"if not defined NVM_ENGINE_REGISTRY_HOME set NVM_ENGINE_REGISTRY_HOME=%~dp0data",
+	"node \"%~dp0nvm-engine-install-server.js\"",
 	"endlocal",
 	"",
 ].join("\r\n");

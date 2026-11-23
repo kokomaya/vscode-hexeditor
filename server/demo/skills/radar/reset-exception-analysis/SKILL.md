@@ -5,13 +5,13 @@ description: >
   深入分析处理器异常导致的复位（FS_RESET_EXCEPTION / FS_RESET_EXCEPT_*）：用寄存器快照、调用栈和 map 文件
   定位出错函数，判断是确定性软件缺陷还是硬件/内存问题。
 keywords: [exception, 异常, data abort, prefetch abort, 浮点, FPU, PC, 调用栈, call stack, map, 地址, 崩溃]
-uses: [ecu-reset-counter, write-timeline]
+uses: [reset-record, write-timeline]
 tools: [nvm_queryFields, nvm_getDecoded, nvm_blockHistory, nvm_evaluate, nvm_readSkillResource]
 ---
 
 ## 前提
 
-- 先 `nvm_useSkill("ecu-reset-counter")`，并读取 `reasons/exception.md`（字段含义、平台异常号）。
+- 先 `nvm_useSkill("reset-record")`，并读取 `reasons/exception.md`（字段含义、平台异常号）。
 - 地址解析需要与 dump 对应软件版本的 `*.map` 文件（demo 目录下：`ars620cn15_ars620_s2a2_2can_iuc.map`、
   `..._dpu_arm_m4.map`、`..._dpu_dsp_c66.map`）。TODO：按 `FsData.u_CoreNumber` 选择对应核的 map。
 

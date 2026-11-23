@@ -7,17 +7,24 @@
  */
 
 import * as vscode from "vscode";
+import { NvmInsights } from "../../../shared/nvm/views/insights";
 import { NvmBlockInfo } from "../../../shared/protocol";
 import { HexEditorRegistry } from "../../hexEditorRegistry";
 import { AnnotationService } from "../annotations/annotationService";
 import { generateReport } from "./reportGenerator";
 
+export interface ActiveReport {
+	fileName: string;
+	markdown: string;
+	docUri: vscode.Uri;
+}
+
 /** Build the report markdown for the active dump. Exported for reuse by AI tools. */
 export async function buildActiveReport(
 	registry: HexEditorRegistry,
 	annotations: AnnotationService,
-	aiSummary?: string,
-): Promise<{ fileName: string; markdown: string; docUri: vscode.Uri } | undefined> {
+	options: { aiSummary?: string; insights?: NvmInsights } = {},
+): Promise<ActiveReport | undefined> {
 	const doc = registry.activeDocument;
 	if (!doc) {
 		return undefined;
@@ -29,16 +36,41 @@ export async function buildActiveReport(
 		noteBodies.set(note.id, await annotations.readNote(doc.uri, note.id));
 	}
 	const fileName = doc.uri.path.replace(/^.*\//, "");
-	const markdown = generateReport({ fileName, blocks, annotations: set, noteBodies, aiSummary });
+	const markdown = generateReport({ fileName, blocks, annotations: set, noteBodies, ...options });
 	return { fileName, markdown, docUri: doc.uri };
 }
 
-export function registerReportCommands(
-	registry: HexEditorRegistry,
-	annotations: AnnotationService,
-): vscode.Disposable[] {
+/**
+ * Builds reports for the commands and the preview. The Overview findings come
+ * from `caps.insights`, which is created after the report commands — so the
+ * source is attached later (same pattern as the workbench host).
+ */
+export class ReportBuilder {
+	private insightsSource?: () => Promise<NvmInsights>;
+
+	constructor(
+		private readonly registry: HexEditorRegistry,
+		private readonly annotations: AnnotationService,
+	) {}
+
+	public setInsightsSource(source: () => Promise<NvmInsights>): void {
+		this.insightsSource = source;
+	}
+
+	public async build(): Promise<ActiveReport | undefined> {
+		let insights: NvmInsights | undefined;
+		try {
+			insights = await this.insightsSource?.();
+		} catch {
+			insights = undefined; // the report is still useful without findings
+		}
+		return buildActiveReport(this.registry, this.annotations, { insights });
+	}
+}
+
+export function registerReportCommands(reports: ReportBuilder): vscode.Disposable[] {
 	const exportReport = vscode.commands.registerCommand("nvmStudio.nvm.exportReport", async () => {
-		const report = await buildActiveReport(registry, annotations);
+		const report = await reports.build();
 		if (!report) {
 			void vscode.window.showWarningMessage("Open an NVM dump first to export a report.");
 			return;

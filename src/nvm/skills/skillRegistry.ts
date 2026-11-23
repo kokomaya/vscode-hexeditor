@@ -15,9 +15,16 @@
 import * as vscode from "vscode";
 import { NvmBlockInfo } from "../../../shared/protocol";
 import { NvmStructCatalog } from "../../../shared/nvm/structRich";
+import {
+	formatHierarchyPath,
+	hierarchyContexts,
+	parseHierarchyPath,
+	resolveHierarchy,
+} from "../../../shared/nvm/skills/hierarchy";
 import { computeBindings, LayoutContext } from "../../../shared/nvm/skills/match";
 import { LoadedSkill, SCOPE_PRIORITY, SkillBindings, SkillDiagnostic, SkillMeta } from "../../../shared/nvm/skills/types";
 import { listResources, loadBody, loadCatalog, scanRoot } from "./skillLoader";
+import { disabledSkillNames } from "./skillToggle";
 import { descriptorSkillRoots, globalSkillRoots, SkillRoot } from "./skillRoots";
 
 export interface SkillIndex {
@@ -25,6 +32,12 @@ export interface SkillIndex {
 	diagnostics: SkillDiagnostic[];
 	/** True when workspace-controlled roots were skipped (untrusted workspace). */
 	restricted: boolean;
+	/** Product / platform / project context the index was resolved for ([] = general only). */
+	context: string[];
+	/** Skills hidden because they belong to another product / platform / project. */
+	hiddenByContext: number;
+	/** Every hierarchy level found in the roots (for the context picker). */
+	contexts: string[][];
 }
 
 interface CachedScan {
@@ -43,6 +56,8 @@ export class SkillRegistry implements vscode.Disposable {
 	private readonly catalogs = new Map<string, Promise<NvmStructCatalog | undefined>>();
 	private readonly bindingMemo = new WeakMap<readonly NvmBlockInfo[], { gen: number; key: string; value: SkillBindings }>();
 	private readonly layoutIds = new Map<string, string[]>();
+	/** Context declared by a dump's descriptor (`skillContext`), keyed by fsPath. */
+	private readonly skillContexts = new Map<string, string[]>();
 	private readonly watched = new Set<string>();
 	private readonly disposables: vscode.Disposable[] = [];
 	private debounce?: ReturnType<typeof setTimeout>;
@@ -51,7 +66,12 @@ export class SkillRegistry implements vscode.Disposable {
 		this.disposables.push(
 			this.changeEmitter,
 			vscode.workspace.onDidChangeConfiguration(e => {
-				if (e.affectsConfiguration("nvmstudio.nvm.skillRoots") || e.affectsConfiguration("nvmstudio.nvm.layoutRoots")) {
+				if (
+					e.affectsConfiguration("nvmstudio.nvm.skillRoots") ||
+					e.affectsConfiguration("nvmstudio.nvm.layoutRoots") ||
+					e.affectsConfiguration("nvmstudio.nvm.skills.context") ||
+					e.affectsConfiguration("nvmstudio.nvm.skills.disabled")
+				) {
 					this.reload();
 				}
 			}),
@@ -83,17 +103,61 @@ export class SkillRegistry implements vscode.Disposable {
 		return ids ? { ids } : undefined;
 	}
 
+	/** Remember the hierarchy context a dump's descriptor declares (undefined clears it). */
+	public setSkillContext(dumpUri: vscode.Uri, context: string | undefined): void {
+		const path = parseHierarchyPath(context);
+		const key = dumpUri.fsPath;
+		const prev = this.skillContexts.get(key);
+		if (path?.length) {
+			this.skillContexts.set(key, path);
+		} else {
+			this.skillContexts.delete(key);
+		}
+		if (formatHierarchyPath(prev ?? []) !== formatHierarchyPath(path ?? [])) {
+			this.changeEmitter.fire();
+		}
+	}
+
+	/** Effective context: the dump's descriptor, else `nvmstudio.nvm.skills.context`. */
+	public contextFor(dumpFsPath: string | undefined): string[] {
+		const declared = dumpFsPath ? this.skillContexts.get(dumpFsPath) : undefined;
+		if (declared) {
+			return declared;
+		}
+		const setting = vscode.workspace.getConfiguration("nvmstudio").get<string>("nvm.skills.context", "");
+		return parseHierarchyPath(setting) ?? [];
+	}
+
+	/** Every skill found in any root for a dump, before context filtering and shadowing. */
+	public async listAll(dumpFsPath?: string): Promise<SkillMeta[]> {
+		const roots = [...globalSkillRoots(this.extensionUri), ...descriptorSkillRoots(dumpFsPath)];
+		const scans = await Promise.all(roots.map(r => this.scan(r)));
+		return scans.flatMap(s => s.skills);
+	}
+
 	/** The merged index for a dump (global roots + roots beside its descriptors). */
 	public async getIndex(dumpFsPath?: string): Promise<SkillIndex> {
 		const roots = [...globalSkillRoots(this.extensionUri), ...descriptorSkillRoots(dumpFsPath)]
 			// stable priority order: setting, descriptor, workspace, user, builtin
 			.sort((a, b) => order(a) - order(b));
 		const scans = await Promise.all(roots.map(r => this.scan(r)));
+		const context = this.contextFor(dumpFsPath);
 		const byName = new Map<string, SkillMeta>();
 		const diagnostics: SkillDiagnostic[] = [];
+		let hiddenByContext = 0;
 		scans.forEach(s => {
 			diagnostics.push(...s.diagnostics);
-			for (const meta of s.skills) {
+			const { visible, shadowed } = resolveHierarchy(s.skills, context);
+			hiddenByContext += s.skills.length - visible.length - shadowed.length;
+			for (const { skill, by } of shadowed) {
+				diagnostics.push({
+					severity: "info",
+					skill: skill.name,
+					location: skill.dir,
+					message: `overridden by the more specific skill at ${formatHierarchyPath(by.hierarchy ?? [])}`,
+				});
+			}
+			for (const meta of visible) {
 				const prev = byName.get(meta.name);
 				if (prev) {
 					diagnostics.push({
@@ -107,7 +171,8 @@ export class SkillRegistry implements vscode.Disposable {
 				}
 			}
 		});
-		const skills = [...byName.values()];
+		const off = disabledSkillNames();
+		const skills = [...byName.values()].map(s => (off.has(s.name) ? { ...s, enabled: false, disabledByUser: true } : s));
 		for (const s of skills) {
 			for (const u of s.uses) {
 				if (!byName.has(u)) {
@@ -115,7 +180,8 @@ export class SkillRegistry implements vscode.Disposable {
 				}
 			}
 		}
-		return { skills, diagnostics, restricted: !vscode.workspace.isTrusted };
+		const contexts = hierarchyContexts(scans.flatMap(s => s.skills.map(m => m.hierarchy ?? [])));
+		return { skills, diagnostics, restricted: !vscode.workspace.isTrusted, context, hiddenByContext, contexts };
 	}
 
 	private scan(root: SkillRoot): Promise<CachedScan> {
@@ -205,7 +271,7 @@ export class SkillRegistry implements vscode.Disposable {
 
 	/** Memoized `skill → block indices` for a dump's blocks. */
 	public bindings(blocks: readonly NvmBlockInfo[], skills: readonly SkillMeta[], layout?: LayoutContext): SkillBindings {
-		const key = `${skills.map(s => s.name).join(",")}|${layout?.ids.join(",") ?? ""}`;
+		const key = `${skills.map(s => s.dir).join(",")}|${layout?.ids.join(",") ?? ""}`;
 		const hit = this.bindingMemo.get(blocks);
 		if (hit && hit.gen === this.generation && hit.key === key) {
 			return hit.value;

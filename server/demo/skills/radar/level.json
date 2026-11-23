@@ -1,0 +1,6 @@
+{
+  "title": "雷达 Radar",
+  "description": "Product level: application-layer skills shared by every radar (FS SafeSection reset records, DEM event memory). Default AUTOSAR stack = Vector FEE V3 with the struct descriptor that decodes SafeSection / DEM; platforms and projects below may override engine / conf.",
+  "engine": "vector/fee-v3",
+  "conf": ["vector/fee-v3/vector_structs.demo.nvmlayout.json"]
+}

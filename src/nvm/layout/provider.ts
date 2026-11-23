@@ -22,6 +22,13 @@ export interface LayoutConfig {
 	/** Human-readable vendor / format name. */
 	vendor: string;
 	/**
+	 * Skill hierarchy context of dumps parsed with this descriptor, as
+	 * `product[/platform[/project]]` (e.g. "radar/chipA/customerB"). Selects which
+	 * product / platform / project skills are visible; overrides the
+	 * `nvmstudio.nvm.skills.context` setting. Opaque to the core.
+	 */
+	skillContext?: string;
+	/**
 	 * Explicit capability tier this descriptor uses. Optional — inferred when
 	 * omitted:
 	 * - `engineScript`/`engine` present  => `"engine"`   (T2, arbitrary code),

@@ -14,13 +14,12 @@
 - `u_ExceptFlags` = 故障状态寄存器；`u_MachineState` = PSR；`u_InstrAddress` = PC；`u_DataAddress` = 故障地址；
   `a_OtherRegs[0]` = 当前任务；`u_StackPointer` = SP；`a_CallStack[]` = 基于帧指针回溯的返回地址。
 
-## 排查步骤
+## 读这条记录时注意
 
-1. 确认 `e_SharedInfoID == MCU`；否则寄存器数据不属于本次复位（可能是残留）。
-2. 用 dump 同目录的 `*.map`（例如 `ars620cn15_ars620_s2a2_2can_iuc.map`）把 `u_InstrAddress`、
-   `a_CallStack[]`（FPU 类为 `a_ResetContextData[4..7]`）解析为函数名 —— 详见 `nvm_useSkill("reset-exception-analysis")`。
-3. DATA_ABORT：结合 `u_DataAddress` 判断空指针 / 越界 / 访问受保护外设。
-4. 多条记录是否同一 PC：同一 PC 反复出现 → 确定性软件缺陷；PC 分散 → 更可能是内存 / 硬件问题。
-5. 对比 `FsData.u_SwVersion`：问题是否只出现在某一软件版本。
+- 先确认 `e_SharedInfoID == MCU`；否则寄存器数据不属于本次复位（可能是残留）。
+- DATA_ABORT：结合 `u_DataAddress` 判断空指针 / 越界 / 访问受保护外设。
+
+要把地址解析成函数、判断是软件缺陷还是内存 / 硬件问题、或对比软件版本，按 playbook
+`nvm_useSkill("reset-exception-analysis")` 的步骤做（map 文件定位、同一 PC 模式、版本回归、时序）。
 
 TODO：本项目平台的异常号定义、FPU 错误标志位含义。

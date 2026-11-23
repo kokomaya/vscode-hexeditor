@@ -583,7 +583,9 @@ export class NvmCapabilities {
 
 	/** The full analysis report (truncated if very long). */
 	public async exportReport(): Promise<{ markdown: string; truncated: boolean }> {
-		const report = await buildActiveReport(this.registry, this.annotations);
+		const report = await buildActiveReport(this.registry, this.annotations, {
+			insights: await this.insights.insights(),
+		});
 		if (!report) {
 			throw new NvmCapabilityError("No active NVM dump to report on.");
 		}

@@ -9,7 +9,7 @@
  * hex grid scrolls the owning row into view.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRecoilValue } from "recoil";
 import { buildTableModel, TableRow } from "../../../../../shared/nvm/views/blocksTableModel";
 import { applyTableQuery, cycleSort } from "../../../../../shared/nvm/views/tableQuery";
@@ -20,6 +20,7 @@ import { clsx, throwOnUndefinedAccessInDev } from "../../../util";
 import { WorkbenchPanelProps } from "../../registry";
 import { NoLayoutState } from "../noLayoutState";
 import _style from "./blocksTable.css";
+import { ColumnMenu } from "./columnMenu";
 import { ColumnPicker } from "./columnPicker";
 import { estimateColumnWidths, gridTemplate } from "./columnWidths";
 import { TableToolbar } from "./tableToolbar";
@@ -39,6 +40,7 @@ export const BlocksTablePanel: React.FC<WorkbenchPanelProps<BlocksTableParams>> 
 	const listRef = useRef<VirtualListHandle>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const [pickingColumns, setPickingColumns] = useState(false);
+	const [columnMenu, setColumnMenu] = useState<{ x: number; y: number }>();
 
 	const model = useMemo(() => buildTableModel(blocks), [blocks]);
 	const view = useMemo(() => applyTableQuery(model, params), [model, params]);
@@ -55,6 +57,8 @@ export const BlocksTablePanel: React.FC<WorkbenchPanelProps<BlocksTableParams>> 
 			listRef.current?.scrollToIndex(selectedIndex);
 		}
 	}, [selected?.id, selectedIndex]);
+
+	const closeColumnMenu = useCallback(() => setColumnMenu(undefined), []);
 
 	if (blocks.length === 0) {
 		return <NoLayoutState />;
@@ -75,7 +79,16 @@ export const BlocksTablePanel: React.FC<WorkbenchPanelProps<BlocksTableParams>> 
 	};
 
 	const header = (
-		<div className={style.headerRow} style={{ gridTemplateColumns: template, height: HEADER_HEIGHT }}>
+		<div
+			className={style.headerRow}
+			style={{ gridTemplateColumns: template, height: HEADER_HEIGHT }}
+			title="Click to sort · right-click to show / hide columns"
+			onContextMenu={e => {
+				e.preventDefault();
+				e.stopPropagation();
+				setColumnMenu({ x: e.clientX, y: e.clientY });
+			}}
+		>
 			<div />
 			{view.columns.map(c => {
 				const sorted = params.sort?.key === c.key ? params.sort.dir : 0;
@@ -84,7 +97,6 @@ export const BlocksTablePanel: React.FC<WorkbenchPanelProps<BlocksTableParams>> 
 						key={c.key}
 						className={clsx(style.headerCell, c.numeric && style.numeric)}
 						onClick={() => setParams({ sort: cycleSort(params.sort, c.key) })}
-						title={`Sort by ${c.label}`}
 					>
 						{c.label}
 						{sorted === 1 ? " ▴" : sorted === -1 ? " ▾" : ""}
@@ -125,6 +137,16 @@ export const BlocksTablePanel: React.FC<WorkbenchPanelProps<BlocksTableParams>> 
 					selected={params.columns}
 					onChange={columns => setParams({ columns })}
 					onClose={() => setPickingColumns(false)}
+				/>
+			)}
+			{columnMenu && (
+				<ColumnMenu
+					x={columnMenu.x}
+					y={columnMenu.y}
+					all={model.columns}
+					selected={params.columns}
+					onChange={columns => setParams({ columns })}
+					onClose={closeColumnMenu}
 				/>
 			)}
 			{selectedHidden && (

@@ -14,6 +14,14 @@
 
 import * as vscode from "vscode";
 import { explainPrompt, handleStaticCommand } from "./chatCommands";
+import {
+	emitSaveAsNoteButton,
+	handleNoteCommand,
+	NOTE_COMMAND,
+	NoteModel,
+	PARTICIPANT_ID,
+	registerChatNoteCommands,
+} from "./chatNote";
 import { emitEvidenceButtons, nvmFollowups, recordingStream, registerChatUiCommands } from "./chatUi";
 import { preparePrompt } from "./chatPrompt";
 import { tryOpenChat } from "./openChat";
@@ -98,14 +106,14 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 	if (chat) {
 		const handler = async (
 			request: { prompt: string; command?: string; model?: unknown; toolInvocationToken?: unknown },
-			_context: unknown,
+			context: { history?: readonly unknown[] } | undefined,
 			rawStream: {
 				markdown(v: string): void;
 				progress?(v: string): void;
 				button?(command: vscode.Command): void;
 			},
 			token: vscode.CancellationToken,
-		): Promise<void> => {
+		): Promise<{ metadata?: AnswerMetadata } | void> => {
 			const recorder = recordingStream(rawStream);
 			const stream = recorder.stream;
 			if (request.command === "skills") {
@@ -113,6 +121,15 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 				return;
 			}
 			if (handleStaticCommand(request.command, caps, rawStream)) {
+				return;
+			}
+			if (request.command === NOTE_COMMAND) {
+				try {
+					const model = (request as { model?: NoteModel }).model;
+					await handleNoteCommand(caps, request.prompt, context?.history ?? [], model, stream, token);
+				} catch (e) {
+					stream.markdown(`Saving the note failed: ${e instanceof Error ? e.message : String(e)}`);
+				}
 				return;
 			}
 			let userPrompt = request.prompt;
@@ -162,16 +179,25 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 				}
 				// Make the answer verifiable: one-click "show" buttons for mentioned blocks.
 				emitEvidenceButtons(rawStream, caps, recorder.text());
+				emitSaveAsNoteButton(rawStream);
+				return { metadata: { answered: true } };
 			} catch (e) {
 				stream.markdown(`AI request failed: ${e instanceof Error ? e.message : String(e)}`);
 			}
 		};
 
 		try {
-			const participant = chat.createChatParticipant("nvmStudio.nvm", handler as never) as vscode.Disposable & {
-				followupProvider?: { provideFollowups(): { prompt: string; label: string }[] };
+			const participant = chat.createChatParticipant(PARTICIPANT_ID, handler as never) as vscode.Disposable & {
+				followupProvider?: {
+					provideFollowups(result?: { metadata?: AnswerMetadata }): { prompt: string; label: string; command?: string }[];
+				};
 			};
-			participant.followupProvider = { provideFollowups: () => nvmFollowups(caps) };
+			participant.followupProvider = {
+				provideFollowups: result => [
+					...(result?.metadata?.answered ? [{ label: "Save as note", prompt: "", command: NOTE_COMMAND }] : []),
+					...nvmFollowups(caps),
+				],
+			};
 			disposables.push(participant);
 		} catch (e) {
 			console.warn("NVM chat participant registration failed:", e);
@@ -179,6 +205,7 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 	}
 
 	disposables.push(...registerChatUiCommands(caps));
+	disposables.push(...registerChatNoteCommands());
 	disposables.push(
 		vscode.commands.registerCommand("nvmStudio.nvm.openChat", async () => {
 			// Prefer opening Copilot Chat addressed to our participant; fall back to
@@ -201,6 +228,12 @@ export function registerChatParticipant(caps: NvmCapabilities): vscode.Disposabl
 	);
 
 	return disposables;
+}
+
+/** Returned from the handler; read back by the follow-up provider. */
+interface AnswerMetadata {
+	/** A model answer was produced (worth offering "Save as note"). */
+	answered?: boolean;
 }
 
 interface LanguageModelLike {
