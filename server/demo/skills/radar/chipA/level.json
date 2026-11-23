@@ -1,5 +1,0 @@
-{
-  "title": "chipA platform",
-  "description": "Platform level: every radar project on chipA uses the same AUTOSAR stack, so the engine is bound here and inherited by its projects.",
-  "engine": "demo-vendor/log-v1"
-}

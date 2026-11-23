@@ -1,8 +1,0 @@
-{
-  "id": "demo-vendor-log-v1",
-  "version": "1.0.0",
-  "displayName": "Demo vendor — log layout v1",
-  "description": "Self-contained demo engine for samples/basic-log/sample-nvm.mot. Block names come from the project descriptor (options.names).",
-  "entry": "log.engine.js",
-  "sdkVersion": 4
-}
