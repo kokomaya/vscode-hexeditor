@@ -1,0 +1,74 @@
+import { spawnSync } from "node:child_process";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const sourceFile = join(repoRoot, "server", "index.js");
+const distDir = join(repoRoot, "dist", "server");
+const distEntry = join(distDir, "nvm-engine-install-server.js");
+const distCmd = join(distDir, "start-nvm-engine-install-server.cmd");
+const distExe = join(distDir, "nvm-engine-install-server.exe");
+
+mkdirSync(distDir, { recursive: true });
+copyFileSync(sourceFile, distEntry);
+// Route modules required by index.js (pkg follows the relative require).
+for (const mod of ["fsutil.js", "engines.js", "configs.js", "skills.js"]) {
+	copyFileSync(join(repoRoot, "server", mod), join(distDir, mod));
+}
+// A ready-to-run data root: the demo (engines / conf / skills) plus the engine packs built into
+// dist/engines, so copying dist/server to a machine and starting it gives a working server.
+const dataDir = join(distDir, "data");
+if (!existsSync(dataDir)) {
+	cpSync(join(repoRoot, "server", "demo"), dataDir, {
+		recursive: true,
+		filter: f => !/(start\.(cmd|sh)|sync-engines\.mjs)$/.test(f),
+	});
+}
+spawnSync(process.execPath, [join(repoRoot, "server", "demo", "sync-engines.mjs"), dataDir], { stdio: "inherit" });
+
+const cmdContent = [
+	"@echo off",
+	"setlocal",
+	"if not defined NVM_ENGINE_SERVER_PORT set NVM_ENGINE_SERVER_PORT=7788",
+	"if not defined NVM_ENGINE_SERVER_HOST set NVM_ENGINE_SERVER_HOST=127.0.0.1",
+	"rem A copied server serves its own data\\ folder; NVM_ENGINE_REGISTRY_HOME only applies without one.",
+	"if exist \"%~dp0data\\\" set NVM_ENGINE_REGISTRY_HOME=%~dp0data",
+	"if not defined NVM_ENGINE_REGISTRY_HOME set NVM_ENGINE_REGISTRY_HOME=%~dp0data",
+	"node \"%~dp0nvm-engine-install-server.js\"",
+	"endlocal",
+	"",
+].join("\r\n");
+writeFileSync(distCmd, cmdContent, "utf8");
+
+if (process.env.NVM_ENGINE_SERVER_SKIP_EXE === "1") {
+	console.log("Skipped exe generation because NVM_ENGINE_SERVER_SKIP_EXE=1");
+	process.exit(0);
+}
+
+const pkgBin = process.platform === "win32" ? "pkg.cmd" : "pkg";
+const localPkg = join(repoRoot, "node_modules", ".bin", pkgBin);
+const target = process.env.NVM_ENGINE_SERVER_TARGET || "node18-win-x64";
+const pkgCmd = existsSync(localPkg) ? localPkg : "npx";
+const pkgArgs = existsSync(localPkg)
+	? [distEntry, "--target", target, "--output", distExe]
+	: ["-y", "pkg@5.8.1", distEntry, "--target", target, "--output", distExe];
+
+const result = spawnSync(pkgCmd, pkgArgs, {
+	cwd: repoRoot,
+	stdio: "inherit",
+	shell: process.platform === "win32",
+});
+
+if (result.status !== 0) {
+	throw new Error(
+		`Failed to generate nvm-engine-install-server executable with target \"${target}\". ` +
+			"Try setting NVM_ENGINE_SERVER_TARGET to a pkg-supported target, e.g. node18-win-x64.",
+	);
+}
+
+if (process.platform !== "win32") {
+	chmodSync(distExe, 0o755);
+}
+
+console.log(`Built ${distExe}`);

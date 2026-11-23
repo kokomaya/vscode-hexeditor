@@ -1,0 +1,5 @@
+{
+  "title": "customerB application",
+  "description": "Project level: the customer's descriptor (block names, match rules). Inherits the engine from chipA; set \"engine\" here to override it.",
+  "conf": ["radar/chipA/customerB/sample.nvmlayout.json"]
+}
