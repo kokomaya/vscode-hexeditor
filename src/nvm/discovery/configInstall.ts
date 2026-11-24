@@ -10,7 +10,7 @@
  */
 
 import * as vscode from "vscode";
-import { configFileUrl, parseConfigListing, RemoteConfig } from "../../../shared/nvm/install/remoteConfigs";
+import { configFileUrl, confFileUrl, parseConfigListing, RemoteConfig } from "../../../shared/nvm/install/remoteConfigs";
 import { fetchJson, fetchText, writeText } from "../install/download";
 import { nvmStudioConfUri } from "../paths";
 import { promptServerBase } from "./installServer";
@@ -44,6 +44,12 @@ export async function installConfigs(
 		await writeText(vscode.Uri.joinPath(folder, parts[parts.length - 1]), await fetchText(configFileUrl(base, config)));
 		folders.add(folder.fsPath);
 		installed++;
+		// Shared files the descriptor references relative to itself (struct packs):
+		// same conf/ layout, so the relative reference resolves after install. Not
+		// registered as layout roots — they are sources, not descriptors.
+		for (const rel of config.requires) {
+			await writeText(vscode.Uri.joinPath(confDir, ...rel.split("/")), await fetchText(confFileUrl(base, rel)));
+		}
 	}
 	for (const folder of folders) {
 		await ensureLayoutRoot(folder);

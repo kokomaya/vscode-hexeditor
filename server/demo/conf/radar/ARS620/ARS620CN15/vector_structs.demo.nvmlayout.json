@@ -1,13 +1,15 @@
 {
-  "_comment": "Business-struct decoding demo: SafeSection reset context (from FS_SafeSection_Types.h + FS_SafeSection_Prv.h + FS_Reset_Types.h) and DEM primary entries (from Dem_Lcfg.h). The engine parses the C headers (concatenated) into a struct+enum catalog; the inline `structCatalog` below only PATCHES fields with rich `format`s + supplies the union discriminator and a few gap-fill enums (UDS status bits, SW build type) that are not scrapeable from the headers. Binding block->struct is the engine's decision via `blockStructs`. The plugin core stays vendor-blind.",
+  "_comment": "Project descriptor ARS620CN15: Vector FEE V3 + business-struct decoding. SafeSection reset context is project-specific and stays inline below; Vector Dem semantics (status byte bits, event names, Primary/Status/Admin bindings) come from the reusable pack conf/vector/dem/vector-dem.nvmstructs.json (declared as the descriptor-relative source `demStructs`). Byte layouts — incl. the event count in EventStatus[] — are always parsed from this project's own headers. The plugin core stays vendor-blind.",
   "vendor": "Vector MICROSAR FEE V3 (struct decode demo)",
   "engine": "vector-fee-v3",
   "sources": {
     "feeLcfg": "Fee_Lcfg.c",
+    "nvmCfg": "NvM_Cfg.c",
     "safeSecPrv": "FS_SafeSection_Prv.h",
     "resetTypes": "FS_Reset_Types.h",
     "safeSecTypes": "FS_SafeSection_Types.h",
-    "demLcfg": "Dem_Lcfg.h"
+    "demLcfg": "Dem_Lcfg.h",
+    "demStructs": "../../../vector/dem/vector-dem.nvmstructs.json"
   },
   "match": { "ext": [".mot", ".srec", ".s19", ".s28", ".s37", ".hex"], "fileNameIncludes": ["NVM_22"] },
   "options": {
@@ -15,18 +17,10 @@
     "numberOfSectors": 2,
     "sectorSize": 196608,
     "structs": {
-      "_comment": "C headers parsed together (order matters: Prv defines sizes used by Types). ARXML sources would be listed here too and parsed via arxmlStructs.",
-      "fromSources": ["safeSecPrv", "resetTypes", "safeSecTypes", "demLcfg"]
+      "_comment": "fromSources: C headers parsed together (order matters: Prv defines sizes used by Types). packs: reusable semantics files (declared sources) applied before the inline structCatalog, which wins.",
+      "fromSources": ["safeSecPrv", "resetTypes", "safeSecTypes", "demLcfg"],
+      "packs": ["demStructs"]
     },
-    "enumsFromDefines": [
-      {
-        "_comment": "Scrape the AUTOSAR DEM event-id table (#define DemConf_DemEventParameter_<NAME> <id>u) from Dem_Lcfg.h into the DemEventName enum, so a decoded EventId shows its symbolic name. Vendor-blind: the plugin only knows '#define <prefix><NAME> <int>'; the prefix is config.",
-        "enum": "DemEventName",
-        "source": "demLcfg",
-        "prefix": "DemConf_DemEventParameter_",
-        "width": 2
-      }
-    ],
     "structCatalog": {
       "_comment": "Overlay: patches parsed structs by field name (adds `format`, union discriminator/cases) and adds gap-fill enums. Field byte layout still comes from the C headers.",
       "structs": {
@@ -65,8 +59,14 @@
               "name": "Shared",
               "discriminator": "e_SharedInfoID",
               "cases": {
-                "1": "Mcu", "2": "Task", "3": "Os", "4": "Voltage", "5": "OsState",
-                "6": "Fccu", "7": "Stacks", "8": "Pmic"
+                "1": "Mcu",
+                "2": "Task",
+                "3": "Os",
+                "4": "Voltage",
+                "5": "OsState",
+                "6": "Fccu",
+                "7": "Stacks",
+                "8": "Pmic"
               }
             }
           ]
@@ -90,9 +90,7 @@
         },
         "FS_SafeSection_t_TaskMonException": {
           "name": "FS_SafeSection_t_TaskMonException",
-          "fields": [
-            { "name": "u_ComponentId", "format": { "kind": "both" } }
-          ]
+          "fields": [{ "name": "u_ComponentId", "format": { "kind": "both" } }]
         },
         "FS_SafeSection_t_Voltage": {
           "name": "FS_SafeSection_t_Voltage",
@@ -111,9 +109,7 @@
         "FS_SafeSection_t_NvmIndex": {
           "_comment": "The SafeSection index NvM block stores ONE uint8: the index of the newest record (FS_SafeSection_u_GetNextNvmIndex writes &u_NvmIndex). Records rotate: block = Record0 + u_Index % SAFE_SECTION_NVM_BLOCKS (3).",
           "name": "FS_SafeSection_t_NvmIndex",
-          "fields": [
-            { "name": "u_NvmIndex", "type": "u8" }
-          ]
+          "fields": [{ "name": "u_NvmIndex", "type": "u8" }]
         },
         "FS_SafeSection_t_McuException": {
           "name": "FS_SafeSection_t_McuException",
@@ -124,41 +120,25 @@
             { "name": "u_DataAddress", "format": { "kind": "hex" } },
             { "name": "u_StackPointer", "format": { "kind": "hex" } }
           ]
-        },
-        "Dem_Cfg_PrimaryEntryType": {
-          "name": "Dem_Cfg_PrimaryEntryType",
-          "fields": [
-            { "name": "Timestamp", "format": { "kind": "hex" } },
-            { "name": "EventId", "format": { "kind": "enum", "enum": "DemEventName" } }
-          ]
         }
       },
       "enums": {
         "FS_InfoBlockBuildType": {
           "name": "FS_InfoBlockBuildType",
           "_comment": "SW-version trailing build-type byte (not in FS_Reset_Types.h).",
-          "values": { "0": "BT_DO_NOT_USE", "1": "BT_PRERELEASE", "2": "BT_TESTVERSION", "3": "BT_NIGHTLYBUILDS", "16": "BT_RELEASE" }
-        },
-        "DemUdsStatus": {
-          "name": "DemUdsStatus",
-          "_comment": "UDS DEM status-byte bit labels (bit index -> label), used with format.kind=bitflags. Not present in Dem_Lcfg.h.",
           "values": {
-            "0": "Test failed",
-            "1": "Test failed this operation cycle",
-            "2": "Pending DTC",
-            "3": "Confirmed DTC",
-            "4": "Test not completed since last clear",
-            "5": "Test failed since last clear",
-            "6": "Test not completed this oper. cycle",
-            "7": "Warning indicator requested"
+            "0": "BT_DO_NOT_USE",
+            "1": "BT_PRERELEASE",
+            "2": "BT_TESTVERSION",
+            "3": "BT_NIGHTLYBUILDS",
+            "16": "BT_RELEASE"
           }
         }
       }
     },
     "blockStructs": [
       { "match": { "nameGlob": "Nvm_SafeSection_Data_Record*" }, "struct": "FS_SafeSection_t_Data" },
-      { "match": { "name": "Nvm_SafeSection_Index" }, "struct": "FS_SafeSection_t_NvmIndex" },
-      { "match": { "nameGlob": "DemPrimaryDataBlock*" }, "struct": "Dem_Cfg_PrimaryEntryType" }
+      { "match": { "name": "Nvm_SafeSection_Index" }, "struct": "FS_SafeSection_t_NvmIndex" }
     ]
   }
 }

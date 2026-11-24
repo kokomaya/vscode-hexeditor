@@ -1,0 +1,72 @@
+{
+  "_comment": "Reusable struct pack for Vector MICROSAR Dem NV data. SEMANTICS ONLY: field byte layout (incl. array sizes such as EventStatus[<event count>], ExtendedData[n][m]) always comes from the project's own generated Dem_Lcfg.h, so this one file fits every project regardless of its event count or record sizes. Patches for fields a project's Dem config compiled out (STD_OFF members) are ignored. Use: declare it as a source relative to your descriptor and list it in options.structs.packs, e.g. sources: { \"demLcfg\": \"Dem_Lcfg.h\", \"demStructs\": \"../../../vector/dem/vector-dem.nvmstructs.json\" }, options.structs: { fromSources: [\"demLcfg\"], packs: [\"demStructs\"] }. Requires the descriptor to declare the `demLcfg` source (Dem_Lcfg.h); declare `nvmCfg` (NvM_Cfg.c) too so the trailing CMAC/CRC is never decoded as data.",
+  "enumsFromDefines": [
+    {
+      "_comment": "AUTOSAR DEM event-id table (#define DemConf_DemEventParameter_<NAME> <id>u) -> DemEventName, so event ids and EventStatus indices show their symbolic name.",
+      "enum": "DemEventName",
+      "source": "demLcfg",
+      "prefix": "DemConf_DemEventParameter_",
+      "width": 2
+    }
+  ],
+  "enums": {
+    "DemUdsStatus": {
+      "name": "DemUdsStatus",
+      "_comment": "ISO 14229-1 DTC status byte, bit index -> label (used with format.kind = bitflags).",
+      "values": {
+        "0": "Test failed",
+        "1": "Test failed this operation cycle",
+        "2": "Pending DTC",
+        "3": "Confirmed DTC",
+        "4": "Test not completed since last clear",
+        "5": "Test failed since last clear",
+        "6": "Test not completed this oper. cycle",
+        "7": "Warning indicator requested"
+      }
+    }
+  },
+  "structs": {
+    "Dem_Cfg_StatusDataType": {
+      "_comment": "DemStatusDataBlock (RAM mirror Dem_Cfg_StatusData). EventStatus is indexed by event id (index 0 = invalid event).",
+      "name": "Dem_Cfg_StatusDataType",
+      "fields": [
+        { "name": "FirstFailedEvent", "format": { "kind": "enum", "enum": "DemEventName" } },
+        { "name": "FirstConfirmedEvent", "format": { "kind": "enum", "enum": "DemEventName" } },
+        { "name": "MostRecentFailedEvent", "format": { "kind": "enum", "enum": "DemEventName" } },
+        { "name": "MostRecentConfmdEvent", "format": { "kind": "enum", "enum": "DemEventName" } },
+        {
+          "name": "EventStatus",
+          "indexEnum": "DemEventName",
+          "elementFormat": { "kind": "bitflags", "enum": "DemUdsStatus" }
+        }
+      ]
+    },
+    "Dem_Cfg_PrimaryEntryType": {
+      "_comment": "DemPrimaryDataBlock<n> / DemSecondaryDataBlock<n> (event memory entry). EventId 0 = free slot.",
+      "name": "Dem_Cfg_PrimaryEntryType",
+      "fields": [
+        { "name": "Timestamp", "format": { "kind": "both" } },
+        { "name": "EventId", "format": { "kind": "enum", "enum": "DemEventName" } },
+        { "name": "ExtendedHeader", "format": { "kind": "hex" } },
+        { "name": "SnapshotHeader", "format": { "kind": "hex" } },
+        { "name": "SnapshotHeaderFifo", "format": { "kind": "hex" } }
+      ]
+    },
+    "Dem_Cfg_AdminDataType": {
+      "_comment": "DemAdminDataBlock (RAM mirror Dem_Cfg_AdminData). Dem_Com_ProcessorWordType is an opaque typedef in the static Dem code: the native word, uint32 on the 32-bit MCUs this pack targets.",
+      "name": "Dem_Cfg_AdminDataType",
+      "fields": [
+        { "name": "ImplementationVersion", "format": { "kind": "hex" } },
+        { "name": "ConfigurationId", "format": { "kind": "both" } },
+        { "name": "MemoryOverflow", "type": "u32", "elementFormat": { "kind": "hex" } },
+        { "name": "CycleState", "format": { "kind": "hex" } }
+      ]
+    }
+  },
+  "blockStructs": [
+    { "match": { "name": "DemStatusDataBlock" }, "struct": "Dem_Cfg_StatusDataType" },
+    { "match": { "name": "DemAdminDataBlock" }, "struct": "Dem_Cfg_AdminDataType" },
+    { "match": { "nameGlob": "DemPrimaryDataBlock*" }, "struct": "Dem_Cfg_PrimaryEntryType" },
+    { "match": { "nameGlob": "DemSecondaryDataBlock*" }, "struct": "Dem_Cfg_PrimaryEntryType" }
+  ]
+}

@@ -32,6 +32,7 @@ server\demo\start.cmd          # or: sh server/demo/start.sh
   levels). The release version lives in `engine.json` (`version`); publishing replaces the folder. A pack's
   `engine.json` `id` remains usable as a legacy reference (`"engine": "vector-fee-v3"`).
   `node server/demo/sync-engines.mjs [root]` copies the packs built in this repo into their vendor/layout folders.
+- **Updating a deployed server without losing its own definitions:** run `server/sync-from-dist.ps1` from the server folder (`-DryRun` first). It calls `server/sync-server.mjs`. Engine packs and server code are always updated (edited copies are backed up). `conf/` and `skills/` are merged: new files are added, files unchanged since the last sync are updated, and files edited on the server are kept and reported as conflicts (`-Force <relPath>` replaces them after a backup). Nothing is deleted, and `.nvmsyncignore` paths are never written. State is kept in `<server>/.nvmsync.json`.
 - **Descriptors** reference an engine by its folder path (`"engine": "vector/fee-v3"`) and may declare
   `"skillContext"`.
 - **Project binding**: a level's `level.json` may set `"engine"` (string or array) and `"conf"` (paths under

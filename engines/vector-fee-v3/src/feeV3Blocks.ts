@@ -203,7 +203,7 @@ export function buildFeeV3Blocks(
 
 	// Optional business-struct decoding: build the catalog + bindings from the
 	// declared struct sources. `undefined` when not configured or SDK < v3.
-	const structResolver = buildStructResolver(sdk, sources, options);
+	const structResolver = buildStructResolver(sdk, sources, options, byName);
 
 	// 1) Sector structure: header + link table (one slot per block index).
 	const alignment = result.alignment;
@@ -362,7 +362,13 @@ export function buildFeeV3Blocks(
 				// The business slice is the first `dataLength` bytes of the stored
 				// payload (data only — never the trailing CMAC/CRC or padding).
 				const businessBytes = c.data.subarray(0, dataLength);
-				decoded = decodeBoundBlock(structResolver, binding, businessBytes, payloadOffset);
+				decoded = decodeBoundBlock(
+					structResolver,
+					binding,
+					businessBytes,
+					payloadOffset,
+					meta?.nvBlockLength,
+				);
 			}
 		}
 

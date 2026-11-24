@@ -63,6 +63,19 @@ describe("NVM install server — client side", () => {
 		expect(configFileUrl("http://s:1", configs[1])).to.equal("http://old/v1/configs/legacy.nvmlayout.json");
 	});
 
+	it("keeps only safe shared-file paths a descriptor requires", () => {
+		const [config] = parseConfigListing({
+			configs: [
+				{
+					path: "radar/ARS620/ARS620CN15/x.nvmlayout.json",
+					requires: ["vector/dem/vector-dem.nvmstructs.json", "../evil.nvmstructs.json", "vector/dem/run.js"],
+				},
+			],
+		});
+		expect(config.requires).to.deep.equal(["vector/dem/vector-dem.nvmstructs.json"]);
+		expect(parseConfigListing({ configs: [{ path: "a.nvmlayout.json" }] })[0].requires).to.deep.equal([]);
+	});
+
 	const catalog = (): ServerCatalog => ({
 		engines: parseEngineListing({ engines: [engine("vector/fee-v3"), engine("vector/fee-v4"), engine("eb/fee")] }),
 		configs: parseConfigListing({

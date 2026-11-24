@@ -466,4 +466,52 @@ describe("NVM rich struct decoder", () => {
 			expect(diagnostics.some(d => d.includes("SomeUnknownType"))).to.equal(true);
 		});
 	});
+
+	describe("array element formatting", () => {
+		const catalog: NvmStructCatalog = {
+			structs: {},
+			enums: {
+				Ev: { name: "Ev", values: { "1": "EV_A", "2": "EV_B" } },
+				Bits: { name: "Bits", values: { "0": "failed", "3": "confirmed" } },
+			},
+		};
+		// Size comes from the parsed header; the formatting is independent of it.
+		const def: NvmStructDef = {
+			name: "Status",
+			fields: [
+				{
+					name: "EventStatus",
+					type: "u8",
+					dims: [3],
+					indexEnum: "Ev",
+					elementFormat: { kind: "bitflags", enum: "Bits" },
+				},
+			],
+		};
+
+		it("applies elementFormat to each element and labels elements by index", () => {
+			const [arr] = decodeStructRich(new Uint8Array([0x00, 0x09, 0x01]), def, { baseOffset: 100, catalog });
+			expect(arr.children!.map(c => c.name)).to.deep.equal([
+				"EventStatus[0]",
+				"EventStatus[1] EV_A",
+				"EventStatus[2] EV_B",
+			]);
+			const ev1 = arr.children![1];
+			expect(ev1.value).to.equal("0x09");
+			expect(ev1.offset).to.equal(101);
+			const flags = Object.fromEntries(ev1.children!.map(c => [c.name, c.value]));
+			expect(flags["0 - failed"]).to.equal(true);
+			expect(flags["3 - confirmed"]).to.equal(true);
+			expect(flags["1 - bit 1"]).to.equal(false);
+		});
+
+		it("leaves plain arrays without elementFormat unchanged", () => {
+			const plain: NvmStructDef = { name: "P", fields: [{ name: "a", type: "u8", dims: [2] }] };
+			const [arr] = decodeStructRich(new Uint8Array([5, 6]), plain, { baseOffset: 0, catalog });
+			expect(arr.children!.map(c => [c.name, c.value, c.children])).to.deep.equal([
+				["a[0]", 5, undefined],
+				["a[1]", 6, undefined],
+			]);
+		});
+	});
 });

@@ -19,6 +19,7 @@ const fileImports = [
 	() => import("./nvmNotesReport.test"),
 	() => import("./nvmSkillHierarchy.test"),
 	() => import("./nvmServerInstall.test"),
+	() => import("./nvmEngineRamMirror.test"),
 ];
 
 export async function run(): Promise<void> {

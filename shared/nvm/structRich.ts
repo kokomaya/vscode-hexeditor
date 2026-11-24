@@ -145,6 +145,18 @@ export interface NvmStructField {
 	/** Rich, config-driven formatter for this field's value. */
 	format?: NvmFormat;
 	/**
+	 * Formatter applied to EACH primitive element of an array field (e.g. a
+	 * `bitflags` expansion per status byte). {@link format} keeps formatting the
+	 * array as a whole (ascii/hex over its bytes); the two are independent.
+	 */
+	elementFormat?: NvmFormat;
+	/**
+	 * Catalog enum labelling the elements of an array field by their INDEX along
+	 * the outermost dimension (e.g. `EventStatus[12]` → its event name when the
+	 * array is indexed by event id). Element names become `name[i] label`.
+	 */
+	indexEnum?: string;
+	/**
 	 * When this field's element is a `union` struct, the name of the sibling
 	 * field whose value selects the active member via {@link cases}.
 	 */
@@ -522,8 +534,9 @@ function applyFormat(
 	rawNum: number,
 	walk: Walk,
 	siblings: Map<string, number>,
+	format: NvmFormat | undefined = field.format,
 ): void {
-	if (!field.format) {
+	if (!format) {
 		return;
 	}
 	const localStart = node.offset - walk.base;
@@ -533,7 +546,7 @@ function applyFormat(
 		scope[k] = v;
 	}
 	const result = formatValue({
-		format: field.format,
+		format,
 		rawNum,
 		bytes: slice,
 		baseOffset: node.offset,
@@ -863,7 +876,8 @@ function decodeFieldValue(
 				break;
 			}
 			const { node, endByte } = decodeFieldValue(field, walk, c, little, dims, dimIndex + 1, siblings);
-			node.name = `${field.name}[${i}]`;
+			const label = dimIndex === 0 ? indexLabel(field, i, walk.catalog) : undefined;
+			node.name = label ? `${field.name}[${i}] ${label}` : `${field.name}[${i}]`;
 			elements.push(node);
 			walk.nodeCount++;
 			c = endByte;
@@ -914,20 +928,31 @@ function decodeFieldValue(
 	// Clamp reported length to the available bytes so reveal never runs past EOF.
 	const avail = Math.max(0, walk.bytes.length - cursor);
 	const length = Math.min(width, avail);
-	return {
-		node: {
-			name: field.name,
-			type,
-			offset: walk.base + cursor,
-			length,
-			raw: prim.raw,
-			value,
-			unit: field.unit,
-			enumLabel,
-			hex: prim.hex,
-		},
-		endByte: cursor + width,
+	const node: NvmDecodedNode = {
+		name: field.name,
+		type,
+		offset: walk.base + cursor,
+		length,
+		raw: prim.raw,
+		value,
+		unit: field.unit,
+		enumLabel,
+		hex: prim.hex,
 	};
+	// Per-element formatter of an array field (scalars use `format` instead).
+	if (field.elementFormat && dims.length > 0) {
+		applyFormat(node, field, prim.rawNum, walk, siblings, field.elementFormat);
+	}
+	return { node, endByte: cursor + width };
+}
+
+/** Label of array element `index` from the field's {@link NvmStructField.indexEnum}. */
+function indexLabel(
+	field: NvmStructField,
+	index: number,
+	catalog: NvmStructCatalog,
+): string | undefined {
+	return field.indexEnum ? catalog.enums[field.indexEnum]?.values[String(index)] : undefined;
 }
 
 /**

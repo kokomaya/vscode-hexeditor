@@ -331,6 +331,72 @@ Example (DEM UDS status byte → 8 named bits, SafeSection version + time):
 { "name": "u_CycleCounter","format": { "kind": "duration", "unit": "ms" } }
 ```
 
+#### Arrays: per-element format + index labels (`elementFormat`, `indexEnum`)
+
+`format` formats an array as a whole (e.g. `ascii` over its bytes). To format **each element**
+use `elementFormat`; to label elements by their **index** (when the array is indexed by an id)
+use `indexEnum`. Example — DEM `EventStatus[<event count>]`, one UDS status byte per event id:
+
+```jsonc
+{ "name": "EventStatus", "indexEnum": "DemEventName", "elementFormat": { "kind": "bitflags", "enum": "DemUdsStatus" } }
+// → EventStatus[3] DEM_TIMEOUT_0x15D = 0x2F  (+ 8 named bit rows)
+```
+
+The patch has no size: the element count comes from the project's own header, so one patch
+fits every project.
+
+#### Reusable struct packs (`*.nvmstructs.json`, `options.structs.packs`)
+
+Semantics that are the same for every project using a BSW module (status-bit names, event-id
+enums, formats, block bindings) belong in a **pack**, not in each project descriptor. A pack is
+JSON with optional `structs` / `enums` (overlay patches, same shape as `structCatalog`),
+`blockStructs` and `enumsFromDefines`. Reference it as a source **relative to the descriptor**
+and list it under `options.structs.packs`:
+
+```jsonc
+"sources": {
+  "demLcfg": "Dem_Lcfg.h",                                        // searched near the dump / workspace roots
+  "nvmCfg": "NvM_Cfg.c",
+  "demStructs": "../../../vector/dem/vector-dem.nvmstructs.json"  // ./ or ../ → relative to THIS descriptor
+},
+"options": { "structs": { "fromSources": ["demLcfg"], "packs": ["demStructs"] } }
+```
+
+Rules:
+- **Layout always comes from the parsed headers.** A pack only patches fields by name. A patch
+  for a field the project's config compiled out (a `STD_OFF` member) is ignored, never appended.
+  The same holds for a format-only struct the headers lack. An overlay field that gives
+  `type` replaces a parsed `struct` reference, and the reverse also holds. Use this to resolve
+  an opaque typedef, e.g. `Dem_Com_ProcessorWordType` → `"u32"`.
+- **Precedence:** parsed headers < packs (in list order) < the descriptor's inline
+  `structCatalog`. For bindings, the descriptor's `blockStructs` are tried before a pack's.
+- **Distribution:** the install server lists a descriptor's descriptor-relative
+  `*.nvmstructs.json` sources as `requires`. "Install from Server" downloads them into the same
+  `conf/` tree, so the relative path still resolves.
+
+#### Zero-config binding through the NvM RAM mirror (`options.structs.autoBind`, default on)
+
+When the descriptor declares `nvmCfg` (`NvM_Cfg.c`), the engine binds blocks **without any
+`blockStructs`**. It follows the AUTOSAR chain:
+`NvMRamBlockDataAddress = &Dem_Cfg_StatusData` → `extern VAR(Dem_Cfg_StatusDataType, …)
+Dem_Cfg_StatusData;` (found in the `fromSources` headers) → struct `Dem_Cfg_StatusDataType`.
+Blocks with `NULL_PTR` (no permanent RAM block, e.g. the SafeSection records), array variables,
+or types not in the catalog are left unbound. Bind those explicitly.
+
+- **Precedence:** the descriptor's `blockStructs` come first, then the packs' `blockStructs`,
+  then auto-binding. `"structs": { "autoBind": false }` turns auto-binding off.
+- **sizeof check (every binding):** when `NvM_Cfg.c` is known, the engine compares the struct's
+  C `sizeof` (with tail padding) against `NvMNvBlockLength`. On a mismatch, the decoded tree
+  starts with a `⚠ size mismatch` note: the headers are not from the build that wrote the dump,
+  or an opaque typedef is unresolved. Example: without the Dem pack,
+  `Dem_Com_ProcessorWordType` is unknown and `Dem_Cfg_AdminDataType` measures 12 instead of 16.
+
+All of this runs in the engine pack (`engines/vector-fee-v3/src/ramMirror.ts`, `nvmCfg.ts`,
+`feeV3Structs.ts`), which the install server distributes. The plugin core does no binding.
+
+Reference pack: `server/demo/conf/vector/dem/vector-dem.nvmstructs.json` (Vector Dem
+`DemStatusDataBlock` / `DemAdminDataBlock` / `DemPrimaryDataBlock*` / `DemSecondaryDataBlock*`).
+
 Bind only your handful of business blocks — decoding is skipped for everything else, so the
 ~thousands of historical chunks cost nothing. The `nextLink` "previous version" jump (§4b)
 plus `decodeStale: true` lets you walk a block's history and compare decoded values across

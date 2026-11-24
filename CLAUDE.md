@@ -84,7 +84,9 @@ lives in adapters/engines/descriptors. See `docs/nvm-layout-providers.md` and
   `tryLoadNvmBlocks()` scans the dump folder, `./conf/`, `../conf/` for **`*.nvmlayout.json`**
   descriptors, reads the auxiliary `sources` files each descriptor *declares* (the core doesn't know
   what a file means — e.g. Vector declares `{ "feeLcfg": "Fee_Lcfg.c" }`), then calls
-  `resolveNvmBlocks()`. Blocks are stashed in `HexEditorRegistry` and pushed to the webview via
+  `resolveNvmBlocks()`. A source written `./…`/`../…` resolves relative to its descriptor
+  (`src/nvm/layout/descriptorSources.ts`) — used for reusable struct packs (`*.nvmstructs.json`,
+  `options.structs.packs`; semantics only, layout always from the project's headers). Blocks are stashed in `HexEditorRegistry` and pushed to the webview via
   `SetNvmBlocks`. With no matching descriptor the file renders like the plain hex editor.
 - **External engines** (`engines/`, e.g. `vector-fee-v3`) are self-contained packs loaded at
   runtime via `createEngine(sdk)`. The `engineSdk.ts` injects a stable vendor-neutral SDK

@@ -38,6 +38,24 @@ export interface NvmCfgBlock {
 	blockBaseNumber?: number;
 	/** `NvMBlockDataIntegrityType`, e.g. `NVM_BLOCK_MAC_ON` / `NVM_BLOCK_CRC_16_ON`. */
 	dataIntegrityType?: string;
+	/**
+	 * `NvMRamBlockDataAddress` — the C variable the block mirrors in RAM
+	 * (`(NvM_RamAddressType)&Dem_Cfg_StatusData` → `Dem_Cfg_StatusData`).
+	 * Undefined for `NULL_PTR` (no permanent RAM block). Its declared type is
+	 * the block's business struct (see ramMirror.ts).
+	 */
+	ramVariable?: string;
+}
+
+/**
+ * Read the RAM mirror variable from an `NvMRamBlockDataAddress` initializer:
+ * `(Cast)&Var`, `(Cast)Var`, `&Var[0]` or `Var` → `Var`; `NULL_PTR` → undefined.
+ */
+function ramVariableOf(body: string): string | undefined {
+	const m = /(?:\(\s*[A-Za-z_]\w*\s*\)\s*)?&?\s*([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\/\*\s*NvMRamBlockDataAddress/.exec(
+		body,
+	);
+	return m && m[1] !== "NULL_PTR" ? m[1] : undefined;
 }
 
 /** Escape a literal string for embedding in a `RegExp`. */
@@ -104,6 +122,7 @@ export function parseNvmCfg(source: string): NvmCfgBlock[] {
 			macSize: labeledNumber(body, "NvMacSize") ?? 0,
 			blockBaseNumber: labeledNumber(body, "NV block Base number"),
 			dataIntegrityType: integrity?.[1],
+			ramVariable: ramVariableOf(body),
 		});
 	}
 

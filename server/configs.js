@@ -7,8 +7,13 @@
  * A descriptor is addressed by its relative path; a project binding
  * (`skills/<…>/level.json` → `"conf"`) lists the paths it needs.
  *
- *   GET /v1/configs                       → { configs: [{ path, name, vendor, engines, skillContext, downloadUrl }] }
- *   GET /v1/configs/file?path={rel}       → one descriptor
+ *   GET /v1/configs                       → { configs: [{ path, name, vendor, engines, skillContext, requires, downloadUrl }] }
+ *   GET /v1/configs/file?path={rel}       → one descriptor, or a shared file it requires
+ *
+ * `requires` lists the shared files a descriptor references through a source
+ * written relative to itself (`"sources": { "demStructs": "../../vector/dem/x.nvmstructs.json" }`),
+ * as paths under conf/. The client downloads them alongside the descriptor so
+ * the relative reference still resolves after install.
  */
 
 const fsp = require("fs/promises");
@@ -17,14 +22,40 @@ const { validName, safeParts, parseJson, sendFile } = require("./fsutil");
 
 const MAX_DEPTH = 5; // folders + file name
 const SUFFIX = ".nvmlayout.json";
+/** Shared files a descriptor may reference (reusable struct packs). */
+const SHARED_SUFFIXES = [".nvmstructs.json"];
+const servable = name => [SUFFIX, ...SHARED_SUFFIXES].some(s => name.toLowerCase().endsWith(s));
 const str = v => (typeof v === "string" && v ? v : undefined);
 
+/** Descriptor-relative shared sources (`./x`, `../y/x`) as normalized paths under conf/. */
+function requiresOf(list, relPath) {
+	const out = new Set();
+	const dir = path.posix.dirname(relPath);
+	for (const c of list) {
+		for (const file of Object.values((c && c.sources) || {})) {
+			if (typeof file !== "string" || !/^\.\.?[\\/]/.test(file)) {
+				continue;
+			}
+			const target = path.posix.normalize(path.posix.join(dir, file.replace(/\\/g, "/")));
+			if (!target.startsWith("../") && SHARED_SUFFIXES.some(s => target.toLowerCase().endsWith(s))) {
+				out.add(target);
+			}
+		}
+	}
+	return [...out].sort();
+}
+
 /** What the client needs to plan an install, read from the descriptor (an object or an array of them). */
-function summarize(raw) {
+function summarize(raw, relPath) {
 	const list = Array.isArray(raw) ? raw : [raw];
 	const engines = [...new Set(list.map(c => c && str(c.engine)).filter(Boolean))];
 	const first = list.find(c => c && typeof c === "object") || {};
-	return { vendor: str(first.vendor), engines, skillContext: str(first.skillContext) };
+	return {
+		vendor: str(first.vendor),
+		engines,
+		skillContext: str(first.skillContext),
+		requires: requiresOf(list, relPath),
+	};
 }
 
 async function walk(root, parts, out) {
@@ -44,7 +75,7 @@ async function walk(root, parts, out) {
 		} else if (d.isFile() && d.name.toLowerCase().endsWith(SUFFIX)) {
 			let info = {};
 			try {
-				info = summarize(parseJson(await fsp.readFile(path.join(root, ...next), "utf8")));
+				info = summarize(parseJson(await fsp.readFile(path.join(root, ...next), "utf8")), next.join("/"));
 			} catch {
 				info = { invalid: true };
 			}
@@ -72,7 +103,7 @@ function createConfigRoutes({ root, json, baseUrl }) {
 		}
 		if (method === "GET" && pathname === "/v1/configs/file") {
 			const rel = safeParts(url.searchParams.get("path"), MAX_DEPTH);
-			if (!rel || !rel[rel.length - 1].toLowerCase().endsWith(SUFFIX)) {
+			if (!rel || !servable(rel[rel.length - 1])) {
 				json(res, 400, { error: "Invalid descriptor path." });
 			} else {
 				await sendFile(res, json, path.join(root, ...rel), `Config ${rel.join("/")} not found.`);

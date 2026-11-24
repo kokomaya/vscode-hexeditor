@@ -1,25 +1,28 @@
-# Sync the engine packs built in the vscode-hexeditor repo (dist/engines) into
-# this server's data root. Put this script next to the server: the data root is
-# ./data when that folder exists (dist/server layout), else the script's own
-# folder (engines/, conf/, skills/ beside it). -DataRoot overrides both.
-# dist is the single source of truth — do NOT hand-edit the synced folders. Edit engines/<pack>/** in the repo, rebuild
-# (`npm run compile` or `node .esbuild.config.js`), then re-run this script.
+# Merge-sync the vscode-hexeditor repo into THIS deployed install server, keeping
+# the server's own definitions. Put this script next to the server (the folder
+# holding nvm-engine-install-server.js and data\).
 #
-#   engines/vector/fee-v3/             engine pack (engine.json + bundle, as built)
-#   conf/vector/fee-v3/*.nvmlayout.json the engine's standard descriptors
+#   .\sync-from-dist.ps1 -DryRun                 # show what would change, write nothing
+#   .\sync-from-dist.ps1                         # apply
+#   .\sync-from-dist.ps1 -Force conf/radar/ARS620/ARS620CN15/x.nvmlayout.json   # replace a conflict
 #
-# Old layout leftovers (engines/vector-fee-v3/<version>/, conf/vector*.nvmlayout.json)
-# are removed. The logic lives in <repo>/server/demo/sync-engines.mjs (shared with
-# the repo demo and the dist/server build), so this script only calls it.
+# Built engine packs + server code are always updated (the old copy is backed up
+# if it was edited here). conf\ and skills\ definitions are merged: new files are
+# added, files untouched since the last sync are updated, files edited here are
+# KEPT and reported as conflicts. Nothing is deleted. Paths listed in
+# .nvmsyncignore (one per line) are never written. Logic: <repo>/server/sync-server.mjs.
+#
+# Build the repo first (npm run compile, or node .esbuild.config.js) so dist\engines is current.
 param(
     [string]$Repo = "d:/02_Work/external_repo/microsoft/vscode-hexeditor",
-    [string]$DataRoot = "",
+    [string]$ServerDir = $PSScriptRoot,
+    [switch]$DryRun,
+    [string[]]$Force = @(),
     [switch]$NoPause
 )
 
 $ErrorActionPreference = "Stop"
-$dataRoot = if ($DataRoot) { $DataRoot } elseif (Test-Path (Join-Path $PSScriptRoot "data")) { Join-Path $PSScriptRoot "data" } else { $PSScriptRoot }
-$sync = Join-Path $Repo "server/demo/sync-engines.mjs"
+$sync = Join-Path $Repo "server/sync-server.mjs"
 
 try {
     if (-not (Test-Path $sync)) {
@@ -28,9 +31,12 @@ try {
     if (-not (Test-Path (Join-Path $Repo "dist/engines"))) {
         throw "No build output in $Repo/dist/engines  (build the extension first: npm run compile)"
     }
-    node $sync $dataRoot
+    $argv = @($sync, $ServerDir)
+    if ($DryRun) { $argv += "--dry-run" }
+    foreach ($f in $Force) { $argv += @("--force", $f) }
+    node @argv
     if ($LASTEXITCODE -ne 0) {
-        throw "sync-engines.mjs failed (exit $LASTEXITCODE)"
+        throw "sync-server.mjs failed (exit $LASTEXITCODE)"
     }
 }
 finally {

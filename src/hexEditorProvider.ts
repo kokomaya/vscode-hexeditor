@@ -55,6 +55,7 @@ import {
 	resolveSymbols,
 } from "./nvm/layout";
 import { HookContext, HookResult, invalidateExternalEngine, isNodeHost, loadExternalEngine, loadExternalHook } from "./nvm/layout/externalEngine";
+import { descriptorDirOf, isDescriptorRelative, rememberDescriptorDir } from "./nvm/layout/descriptorSources";
 import { getNvmLog } from "./nvm/nvmLog";
 import { applySkillsToBlocks } from "./nvm/skills/skillDecodePass";
 import { SkillRegistry } from "./nvm/skills/skillRegistry";
@@ -1084,6 +1085,7 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 									typeof c.engineScript === "string" ||
 									typeof c.engine === "string")
 							) {
+								rememberDescriptorDir(c as LayoutConfig, d);
 								out.push({ file: name, config: c as LayoutConfig });
 							}
 						}
@@ -1239,14 +1241,14 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		dir: string,
 		configs: LayoutConfig[],
 	): Promise<{ sources: Record<string, string>; report: SourceReportEntry[] }> {
-		// logical name -> file name (later descriptors win on conflict)
-		const wanted = new Map<string, string>();
+		// logical name -> file name + its descriptor's folder (later descriptors win on conflict)
+		const wanted = new Map<string, { file: string; baseDir?: string }>();
 		// logical names any descriptor flagged as required.
 		const required = new Set<string>();
 		for (const c of configs) {
 			for (const [logical, file] of Object.entries(c.sources ?? {})) {
 				if (typeof file === "string" && file) {
-					wanted.set(logical, file);
+					wanted.set(logical, { file, baseDir: descriptorDirOf(c) });
 				}
 			}
 			for (const logical of c.requiredSources ?? []) {
@@ -1259,8 +1261,11 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		const out: Record<string, string> = {};
 		const report: SourceReportEntry[] = [];
 		await Promise.all(
-			[...wanted].map(async ([logical, file]) => {
-				const content = await this.readNearbyFile(dir, file, exclude);
+			[...wanted].map(async ([logical, { file, baseDir }]) => {
+				const content =
+					isDescriptorRelative(file) && baseDir
+						? await this.readDescriptorRelative(baseDir, file)
+						: await this.readNearbyFile(dir, file.replace(/^.*[\\/]/, ""), exclude);
 				if (content !== undefined) {
 					out[logical] = content;
 				}
@@ -1274,6 +1279,16 @@ export class HexEditorProvider implements vscode.CustomEditorProvider<HexDocumen
 		);
 		report.sort((a, b) => a.logical.localeCompare(b.logical));
 		return { sources: out, report };
+	}
+
+	/** Read a source declared relative to its descriptor's folder (`./x`, `../y/x`). */
+	private async readDescriptorRelative(baseDir: string, file: string): Promise<string | undefined> {
+		try {
+			const uri = vscode.Uri.joinPath(vscode.Uri.file(baseDir), ...file.split(/[\\/]/));
+			return new TextDecoder("utf8").decode(await vscode.workspace.fs.readFile(uri));
+		} catch {
+			return undefined;
+		}
 	}
 
 	/** Read the nearest AUTOSAR config (`*.arxml`/`*.xml`) content, if any. */
