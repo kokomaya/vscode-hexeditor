@@ -28,6 +28,8 @@ export interface RemoteConfig {
 	 * itself; installed alongside it so the reference still resolves.
 	 */
 	requires: string[];
+	/** Content hash of the descriptor + its `requires`; absent on older servers. */
+	hash?: string;
 	/** Server-provided download URL, kept only for older servers that have no file route. */
 	downloadUrl?: string;
 }
@@ -50,6 +52,7 @@ export function parseConfigListing(payload: unknown): RemoteConfig[] {
 			engines: Array.isArray(c.engines) ? c.engines.filter((e): e is string => typeof e === "string" && !!e) : [],
 			skillContext: str(c.skillContext),
 			requires: parseRequires(c.requires),
+			hash: str(c.hash),
 			// Only trusted for old servers: a proxied server may report its own host wrongly.
 			downloadUrl: c.path === undefined ? str(c.downloadUrl) : undefined,
 		});

@@ -28,6 +28,8 @@ export interface RemoteEngine {
 	sdkVersion?: number;
 	/** Relative file paths inside the pack (always includes engine.json). */
 	files: string[];
+	/** Content hash (shared/nvm/install/contentHash.ts); absent on older servers. */
+	hash?: string;
 }
 
 export interface RemoteVendor {
@@ -72,6 +74,7 @@ function parseEngine(raw: unknown): RemoteEngine | undefined {
 		description: str(e.description) ?? "",
 		sdkVersion: typeof e.sdkVersion === "number" ? e.sdkVersion : undefined,
 		files: files as string[],
+		hash: str(e.hash),
 	};
 }
 

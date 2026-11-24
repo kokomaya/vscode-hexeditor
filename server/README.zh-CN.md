@@ -80,7 +80,7 @@ start-nvm-engine-install-server.cmd    # 或 nvm-engine-install-server.exe(需�
 
   `id` 可选；保留旧 id(`vector-fee-v3`)时,旧描述文件里的 `"engine": "vector-fee-v3"` 仍然能解析。
 - 仓库里构建出来的引擎用 `node server/demo/sync-engines.mjs [数据根]` 同步：包进 `engines/vector/fee-v3/`，引擎自带的标准描述文件进 `conf/vector/fee-v3/`；旧结构(`engines/vector-fee-v3/<版本>/`、`conf/vector*.nvmlayout.json`)会被清掉，其他 conf 不动。
-- **更新已部署的服务器(保留服务器上的自定义)**:把 `server/sync-from-dist.ps1` 放到服务器目录(`nvm-engine-install-server.js` 和 `data` 所在处)运行，先用 `-DryRun` 看计划。它调用 `server/sync-server.mjs`:引擎包和服务器代码总是更新(服务器上改过的先备份到 `backupsync-<时间>`)；`conf`、`skills` 按合并规则——新增文件直接加，上次同步后没改过的才更新，服务器上改过的**保留**并列为冲突(`-Force <相对路径>` 才替换，替换前备份)；从不删除；`.nvmsyncignore` 里列出的路径从不写入。同步记录在服务器目录的 `.nvmsync.json`。
+- **更新已部署的服务器(保留服务器上的自定义)**:把 `server/sync-from-dist.ps1` 放到服务器目录(`nvm-engine-install-server.js` 和 `data` 所在处)运行，先用 `-DryRun` 看计划。它调用 `server/sync-server.mjs`。**只发布 `server/publish.json` 列出的内容**(引擎包及其中点名的引擎 conf 文件，以及 `data` 里列出的 `server/demo` 路径)；`server/demo` 其余内容(chipA 示例、demo-vendor 引擎)只留在工程里做本地 demo。服务器代码总是同步。引擎包和服务器代码总是更新(服务器上改过的先备份到 `backup\sync-<时间>`)；`conf`、`skills` 按合并规则——新增文件直接加，上次同步后没改过的才更新，服务器上改过的**保留**并列为冲突(`-Force <相对路径>` 才替换，替换前备份)；从不删除；`.nvmsyncignore` 里列出的路径从不写入。同步记录在服务器目录的 `.nvmsync.json`。
 
 ### conf：项目描述文件
 

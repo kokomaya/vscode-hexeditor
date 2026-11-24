@@ -7,7 +7,7 @@
  * A descriptor is addressed by its relative path; a project binding
  * (`skills/<…>/level.json` → `"conf"`) lists the paths it needs.
  *
- *   GET /v1/configs                       → { configs: [{ path, name, vendor, engines, skillContext, requires, downloadUrl }] }
+ *   GET /v1/configs                       → { configs: [{ path, name, vendor, engines, skillContext, requires, hash, downloadUrl }] }
  *   GET /v1/configs/file?path={rel}       → one descriptor, or a shared file it requires
  *
  * `requires` lists the shared files a descriptor references through a source
@@ -18,7 +18,7 @@
 
 const fsp = require("fs/promises");
 const path = require("path");
-const { validName, safeParts, parseJson, sendFile } = require("./fsutil");
+const { contentHash, validName, safeParts, parseJson, sendFile } = require("./fsutil");
 
 const MAX_DEPTH = 5; // folders + file name
 const SUFFIX = ".nvmlayout.json";
@@ -79,7 +79,10 @@ async function walk(root, parts, out) {
 			} catch {
 				info = { invalid: true };
 			}
-			out.push({ path: next.join("/"), name: d.name, ...info });
+			const rel = next.join("/");
+			// Descriptor + the shared files it requires: a struct-pack change is an update too.
+			const hash = info.invalid ? undefined : await contentHash(root, [rel, ...info.requires]);
+			out.push({ path: rel, name: d.name, ...info, hash });
 		}
 	}
 }

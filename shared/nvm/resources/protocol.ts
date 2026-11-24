@@ -57,7 +57,15 @@ export interface DumpSummary {
 }
 
 export interface ResourcesState {
-	server: { base: string; status: "none" | "connecting" | "online" | "error"; error?: string };
+	server: {
+		base: string;
+		status: "none" | "connecting" | "online" | "error";
+		error?: string;
+		/** Epoch ms of the last server check (the panel re-checks while visible). */
+		checkedAt?: number;
+		/** Rows whose server copy differs from the local one (content or version). */
+		updates: number;
+	};
 	context: { key: string; title: string; source: "setting" | "descriptor" | "none"; nodes: ContextNode[] };
 	rows: ResourceRow[];
 	/** References the server cannot satisfy for the current context. */
@@ -74,6 +82,7 @@ export type ResourcesToHost =
 	| { type: "setContext"; key: string }
 	| { type: "install"; items: { kind: ResourceKind; id: string }[] }
 	| { type: "installContext" }
+	| { type: "updateAll" }
 	| { type: "remove"; kind: ResourceKind; id: string }
 	| { type: "open"; kind: ResourceKind; id: string }
 	| { type: "openSetting"; id: string }

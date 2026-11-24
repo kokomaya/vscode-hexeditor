@@ -24,7 +24,7 @@
 const crypto = require("crypto");
 const fsp = require("fs/promises");
 const path = require("path");
-const { validName, safeParts, exists, readJsonSafe, listFiles, sendFile, replaceFolder, checkFileMap } = require("./fsutil");
+const { contentHash, validName, safeParts, exists, readJsonSafe, listFiles, sendFile, replaceFolder, checkFileMap } = require("./fsutil");
 
 const MAX_DEPTH = 2; // vendor / layout
 const MANIFEST = "engine.json";
@@ -50,6 +50,7 @@ async function readEngine(dir, parts) {
 		description: str(manifest.description) || "",
 		sdkVersion: typeof manifest.sdkVersion === "number" ? manifest.sdkVersion : undefined,
 		files,
+		hash: await contentHash(dir, files),
 	};
 }
 

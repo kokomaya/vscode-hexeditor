@@ -73,6 +73,8 @@ function serverBar(s: ResourcesState): string {
 		<input id="base" type="text" value="${esc(st.base)}" placeholder="10.1.2.3 | host:7788 | https://…" />
 		<button data-action="connect">${st.status === "online" ? "Reconnect" : "Connect"}</button>
 		<span class="status ${st.status}" title="${esc(st.error)}">${esc(dot)}</span>
+		${st.checkedAt ? `<span class="muted" title="Re-checked automatically while this page is visible">checked ${esc(new Date(st.checkedAt).toLocaleTimeString())}</span>` : ""}
+		${st.status === "online" && st.updates ? `<button data-action="updateAll" title="The server copy differs from the installed one (content or version)">⬆ Update all (${st.updates})</button>` : ""}
 		${st.error ? `<span class="warn" title="${esc(st.error)}">${esc(st.error.slice(0, 120))}</span>` : ""}
 		<span class="spacer"></span>
 		<button class="secondary" data-action="refresh" title="Rescan local folders and the server">⟳ Refresh</button>
@@ -140,9 +142,12 @@ function table(s: ResourcesState): string {
 	const rows = visibleRows(s);
 	const online = s.server.status === "online";
 	const count = (k: ResourceKind) => s.rows.filter(r => r.kind === k && (!ui.onlyContext || r.inContext || r.active)).length;
-	const tabs = TABS.map(
-		t => `<button class="tab ${ui.tab === t.kind ? "on" : ""}" data-action="tab" data-kind="${t.kind}">${t.label} <span class="n">${count(t.kind)}</span></button>`,
-	).join("");
+	const updates = (k: ResourceKind) => s.rows.filter(r => r.kind === k && r.status === "update").length;
+	const tabs = TABS.map(t => {
+		const u = updates(t.kind);
+		const badge = u ? ` <span class="n" title="${u} update(s) on the server">⬆${u}</span>` : "";
+		return `<button class="tab ${ui.tab === t.kind ? "on" : ""}" data-action="tab" data-kind="${t.kind}">${t.label} <span class="n">${count(t.kind)}</span>${badge}</button>`;
+	}).join("");
 	const installable = rows.filter(r => r.remote && r.status !== "installed");
 	const engineNote =
 		ui.tab === "engine" && (!s.trusted || !s.enginesAllowed)
@@ -248,6 +253,8 @@ root.addEventListener("click", ev => {
 			return send({ type: "toggleSkill", name: el.dataset.name!, enabled: (el as HTMLInputElement).checked });
 		case "installContext":
 			return send({ type: "installContext" });
+		case "updateAll":
+			return send({ type: "updateAll" });
 		case "tab":
 			ui.tab = kind as ResourceKind;
 			saveUi();

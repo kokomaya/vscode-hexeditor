@@ -352,13 +352,27 @@ export function buildFeeV3Blocks(
 		// Business-struct decode: if this block is bound to a struct AND has net
 		// business payload, decode it into a value tree the inspector renders.
 		let decoded;
-		if (structResolver && dataLength > 0 && (structResolver.decodeStale || !c.stale)) {
+		if (structResolver && dataLength > 0) {
 			const binding = matchBinding(structResolver, {
 				name: blockName,
 				tag: c.tag,
 				identityKey: `tag:0x${c.tag.toString(16)}`,
 			});
-			if (binding) {
+			if (binding && c.stale && !structResolver.decodeStale) {
+				// Historical chunks are not decoded by default (there can be hundreds of
+				// them per block); say so instead of showing an empty inspector.
+				decoded = [
+					{
+						name: "stale copy",
+						type: "note",
+						offset: payloadOffset,
+						length: 0,
+						value:
+							`Historical copy, not decoded as ${binding.struct}. Select the latest copy, ` +
+							`or set options.decodeStale = true in the descriptor (decodes every copy; heavy).`,
+					},
+				];
+			} else if (binding) {
 				// The business slice is the first `dataLength` bytes of the stored
 				// payload (data only — never the trailing CMAC/CRC or padding).
 				const businessBytes = c.data.subarray(0, dataLength);
@@ -463,6 +477,19 @@ export function buildFeeV3Blocks(
 	}
 	for (const b of latestByIdentity.values()) {
 		b.isLatest = true;
+	}
+
+	// Point each "stale copy" note at the block's current version so the user
+	// knows where the decoded copy lives.
+	for (const b of blocks) {
+		const note = b.decoded?.[0];
+		if (!b.identity || note?.type !== "note" || note.name !== "stale copy") {
+			continue;
+		}
+		const latest = latestByIdentity.get(b.identity.key);
+		if (latest) {
+			note.value = `${note.value} Latest copy: offset ${latest.offset} (0x${latest.offset.toString(16)}).`;
+		}
 	}
 
 	// Make the "State" column reflect the true current version: only the chain

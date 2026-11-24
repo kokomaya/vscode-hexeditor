@@ -1,4 +1,4 @@
-// Merge-sync this repo's install server (code + engine packs + demo data) into a
+// Merge-sync this repo's install server (code + engine packs + published data) into a
 // deployed server folder WITHOUT clobbering what was edited there.
 //
 //   node server/sync-server.mjs <serverDir> [--dry-run] [--force <relPath>]...
@@ -6,12 +6,13 @@
 // <serverDir> is a deployed server (e.g. a copy of dist/server): its data root
 // is <serverDir>/data when that folder exists, else <serverDir> itself.
 //
-// What is synced (source → target):
-//   dist/engines/<id>/ (no conf/, *.map)   → data/engines/<vendor>/<layout>/   built packs
-//   dist/engines/<id>/conf/*.nvmlayout.json → data/conf/<vendor>/<layout>/       engine standard descriptors
-//   server/demo/{conf,skills,engines}/**    → data/...                          shared definitions (e.g. struct packs)
-//   server/{index→nvm-engine-install-server,fsutil,engines,configs,skills}.js → <serverDir>/   (only when the
-//                                            target looks like a dist/server deployment)
+// WHAT is published is an allowlist, server/publish.json — server/demo is a local demo
+// data root and is NOT published wholesale:
+//   engines.<id>                     dist/engines/<id>/ (no conf/, *.map) → data/engines/<target>/
+//   engines.<id>.conf                dist/engines/<id>/conf/<file>         → data/conf/<target>/<file>
+//   data[]                           server/demo/<path> (file or folder)   → data/<path>
+//   server code (always)             server/{index→nvm-engine-install-server,fsutil,engines,configs,skills}.js
+//                                    → <serverDir>/   (only when the target looks like a dist/server deployment)
 //
 // Built engine packs and server code are REPO-OWNED (build output, never hand-edited): always
 // updated; a locally edited copy is backed up first. Everything else (conf/, skills/ definitions)
@@ -26,24 +27,22 @@
 //                                            backup to <serverDir>/backup/sync-<timestamp>/
 //   * nothing is ever deleted
 //   * paths listed in <serverDir>/.nvmsyncignore (one relative path / folder prefix per line, `#`
-//     comments) are never written — e.g. repo demo projects the deployment does not want.
+//     comments) are never written.
 //
 // First run against an existing server (no .nvmsync.json yet): every differing file is a conflict,
 // so nothing that was hand-edited is lost. Review the report, then --force what should be replaced.
 
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** dist/engines/<built id> → <vendor>/<layout> on the server (same map as demo/sync-engines.mjs). */
-const ENGINE_FOLDERS = { "vector-fee-v3": "vector/fee-v3" };
 const CODE_FILES = { "index.js": "nvm-engine-install-server.js", "fsutil.js": "fsutil.js", "engines.js": "engines.js", "configs.js": "configs.js", "skills.js": "skills.js" };
-const DEMO_FOLDERS = ["conf", "skills", "engines"];
 const MANIFEST = ".nvmsync.json";
 const IGNORE = ".nvmsyncignore";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const publish = JSON.parse(readFileSync(join(repoRoot, "server", "publish.json"), "utf8"));
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const force = [];
@@ -94,7 +93,7 @@ function walk(dir, filter = () => true) {
 const plan = [];
 const add = (src, rel, owned = false) => plan.push({ src, rel: norm(rel), owned });
 
-for (const [id, target] of Object.entries(ENGINE_FOLDERS)) {
+for (const [id, spec] of Object.entries(publish.engines ?? {})) {
 	const built = join(repoRoot, "dist", "engines", id);
 	if (!existsSync(join(built, "engine.json"))) {
 		console.warn(`skip engine ${id}: not built (run npm run compile)`);
@@ -102,24 +101,28 @@ for (const [id, target] of Object.entries(ENGINE_FOLDERS)) {
 	}
 	for (const f of walk(built, f => !f.endsWith(".map"))) {
 		const r = norm(relative(built, f));
-		if (r.startsWith("conf/")) {
-			if (r.endsWith(".nvmlayout.json")) {
-				add(f, `${dataPrefix}conf/${target}/${r.slice("conf/".length)}`);
-			}
+		if (!r.startsWith("conf/")) {
+			add(f, `${dataPrefix}engines/${spec.target}/${r}`, true);
+		}
+	}
+	for (const file of spec.conf ?? []) {
+		const f = join(built, "conf", file);
+		if (existsSync(f)) {
+			add(f, `${dataPrefix}conf/${spec.target}/${norm(file)}`);
 		} else {
-			add(f, `${dataPrefix}engines/${target}/${r}`, true);
+			console.warn(`skip ${id} conf ${file}: not in the build output`);
 		}
 	}
 }
 const demo = join(repoRoot, "server", "demo");
-for (const folder of DEMO_FOLDERS) {
-	for (const f of walk(join(demo, folder), f => !f.split(sep).includes(".git"))) {
-		const r = norm(relative(demo, f));
-		// Built engine packs come from dist (above), not from the demo copy.
-		if (Object.values(ENGINE_FOLDERS).some(t => r.startsWith(`engines/${t}/`))) {
-			continue;
-		}
-		add(f, dataPrefix + r);
+for (const entry of publish.data ?? []) {
+	const src = join(demo, ...norm(entry).split("/"));
+	if (!existsSync(src)) {
+		console.warn(`skip ${entry}: not found under server/demo`);
+		continue;
+	}
+	for (const f of statSync(src).isDirectory() ? walk(src) : [src]) {
+		add(f, dataPrefix + norm(relative(demo, f)));
 	}
 }
 if (isDistDeployment) {

@@ -11,7 +11,7 @@
     "demLcfg": "Dem_Lcfg.h",
     "demStructs": "../../../vector/dem/vector-dem.nvmstructs.json"
   },
-  "match": { "ext": [".mot", ".srec", ".s19", ".s28", ".s37", ".hex"], "fileNameIncludes": ["NVM_22"] },
+  "match": { "ext": [".mot", ".srec", ".s19", ".s28", ".s37", ".hex"] },
   "options": {
     "alignment": 8,
     "numberOfSectors": 2,

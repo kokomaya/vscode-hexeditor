@@ -23,6 +23,8 @@ export interface RemoteSkill {
 	version?: string;
 	/** Relative file paths inside the skill folder (always includes SKILL.md). */
 	files: string[];
+	/** Content hash (shared/nvm/install/contentHash.ts); absent on older servers. */
+	hash?: string;
 }
 
 export interface RemoteLevel {
@@ -73,6 +75,7 @@ function parseSkill(raw: unknown): RemoteSkill | undefined {
 		description: typeof s.description === "string" ? s.description : "",
 		version: typeof s.version === "string" ? s.version : undefined,
 		files: files as string[],
+		hash: typeof s.hash === "string" && s.hash ? s.hash : undefined,
 	};
 }
 

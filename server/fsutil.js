@@ -6,6 +6,7 @@
  * a request can never reach outside its data folder.
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
@@ -61,6 +62,27 @@ async function listFiles(dir, { maxDepth = 4, maxFiles = 200 } = {}, prefix = ""
 	return out;
 }
 
+/**
+ * Content hash of `rels` (paths relative to `dir`). Must stay identical to
+ * `contentHash()` in shared/nvm/install/contentHash.ts: sorted by path,
+ * path + NUL + text (BOM dropped, CRLF → LF) + NUL, sha256 hex. A file that
+ * cannot be read hashes as empty, so the listing never fails on it.
+ */
+async function contentHash(dir, rels) {
+	const hash = crypto.createHash("sha256");
+	for (const rel of [...rels].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+		let text = "";
+		try {
+			text = await fsp.readFile(path.join(dir, ...rel.split("/")), "utf8");
+		} catch {
+			// missing file: hash as empty
+		}
+		text = (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).replace(/\r\n/g, "\n");
+		hash.update(`${rel}\0${text}\0`, "utf8");
+	}
+	return hash.digest("hex");
+}
+
 const CONTENT_TYPES = { ".json": "application/json", ".js": "application/javascript", ".md": "text/markdown" };
 
 /** Stream a file, or answer 404 with `notFound`. */
@@ -109,4 +131,4 @@ function checkFileMap(files, { maxFiles = 200, maxDepth = 5 } = {}) {
 	});
 }
 
-module.exports = { validName, safeParts, exists, parseJson, readJsonSafe, listFiles, sendFile, replaceFolder, checkFileMap };
+module.exports = { contentHash, validName, safeParts, exists, parseJson, readJsonSafe, listFiles, sendFile, replaceFolder, checkFileMap };

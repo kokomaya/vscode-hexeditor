@@ -6,7 +6,8 @@
 #   .\sync-from-dist.ps1                         # apply
 #   .\sync-from-dist.ps1 -Force conf/radar/ARS620/ARS620CN15/x.nvmlayout.json   # replace a conflict
 #
-# Built engine packs + server code are always updated (the old copy is backed up
+# Only what <repo>/server/publish.json lists is published (server/demo is a local
+# demo otherwise). Built engine packs + server code are always updated (the old copy is backed up
 # if it was edited here). conf\ and skills\ definitions are merged: new files are
 # added, files untouched since the last sync are updated, files edited here are
 # KEPT and reported as conflicts. Nothing is deleted. Paths listed in

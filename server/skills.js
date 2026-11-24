@@ -32,7 +32,7 @@
 
 const fsp = require("fs/promises");
 const path = require("path");
-const { validName, safeParts, exists, readJsonSafe, listFiles, sendFile, replaceFolder, checkFileMap } = require("./fsutil");
+const { contentHash, validName, safeParts, exists, readJsonSafe, listFiles, sendFile, replaceFolder, checkFileMap } = require("./fsutil");
 
 const LEVELS = ["product", "platform", "project"];
 const MAX_FILE_DEPTH = 4;
@@ -98,6 +98,7 @@ async function walk(root, levelPath, out) {
 		}
 		if (text !== undefined) {
 			const meta = frontMatter(text);
+			const files = (await listFiles(dir, { maxDepth: MAX_FILE_DEPTH })).sort();
 			out.skills.push({
 				id: parts.join("/"),
 				name: d.name,
@@ -106,7 +107,8 @@ async function walk(root, levelPath, out) {
 				kind: meta.kind || undefined,
 				description: meta.description || "",
 				version: meta.version || undefined,
-				files: (await listFiles(dir, { maxDepth: MAX_FILE_DEPTH })).sort(),
+				files,
+				hash: await contentHash(dir, files),
 			});
 		} else if (levelPath.length < LEVELS.length) {
 			out.levels.push(levelEntry(parts, (await readJsonSafe(path.join(dir, LEVEL_FILE))) || {}));

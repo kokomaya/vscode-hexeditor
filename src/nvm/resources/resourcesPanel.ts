@@ -25,6 +25,7 @@ import { HexEditorRegistry } from "../../hexEditorRegistry";
 import { LoadDiagnosticsStore } from "../diagnostics/loadDiagnostics";
 import { lastServerBase, rememberServerBase } from "../discovery/installServer";
 import { EngineManager, InstalledEngine } from "../engines/engineManager";
+import { localContentHash } from "../install/localHash";
 import { fetchCatalog } from "../install/serverCatalog";
 import { runInstallPlan } from "../install/serverInstall";
 import { nvmStudioConfUri, nvmStudioSkillsUri } from "../paths";
@@ -45,8 +46,29 @@ interface Deps {
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const skillId = (m: SkillMeta) => formatHierarchyPath([...(m.hierarchy ?? []), m.name]);
-const statusOf = (local: boolean, remote: boolean, lv?: string, rv?: string): ResourceRow["status"] =>
-	local && remote ? (lv && rv && lv !== rv ? "update" : "installed") : local ? "localOnly" : "available";
+/**
+ * `same` = the local copy's content hash equals the server's (undefined when it
+ * cannot be compared: older server, or no copy in the user folder). Content
+ * wins over versions, so an edit published without a version bump still shows
+ * as an update; without hashes the versions decide.
+ */
+const statusOf = (local: boolean, remote: boolean, lv?: string, rv?: string, same?: boolean): ResourceRow["status"] =>
+	local && remote
+		? same === false || (same === undefined && lv && rv && lv !== rv)
+			? "update"
+			: "installed"
+		: local
+			? "localOnly"
+			: "available";
+
+/** Re-read the server when the panel is shown and the last check is older than this. */
+const STALE_MS = 15_000;
+/** Re-read the server this often while the panel is visible. */
+const POLL_MS = 60_000;
+
+async function sameContent(dir: vscode.Uri | undefined, files: readonly string[], hash: string | undefined): Promise<boolean | undefined> {
+	return dir && hash ? (await localContentHash(dir, files)) === hash : undefined;
+}
 
 function randomNonce(): string {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -80,11 +102,18 @@ class ResourcesPanel {
 	private catalog?: ServerCatalog;
 	private lastDump?: vscode.Uri;
 	private pending?: ReturnType<typeof setTimeout>;
+	private readonly poll: ReturnType<typeof setInterval>;
+	/** When the server listing was last read (successfully or not). */
+	private checkedAt?: number;
+	private fetching = false;
+	/** Rows that had an update at the previous server check (undefined = no check yet). */
+	private knownUpdates?: Set<string>;
 	private readonly disposables: vscode.Disposable[] = [];
 
 	public static show(deps: Deps): void {
 		if (ResourcesPanel.current) {
 			ResourcesPanel.current.panel.reveal();
+			ResourcesPanel.current.refreshServer(STALE_MS);
 			return;
 		}
 		const panel = vscode.window.createWebviewPanel(
@@ -110,6 +139,12 @@ class ResourcesPanel {
 		panel.webview.html = this.html();
 		this.disposables.push(
 			panel.onDidDispose(() => this.dispose()),
+			// The server may have changed while the panel was in the background.
+			panel.onDidChangeViewState(e => {
+				if (e.webviewPanel.visible) {
+					this.refreshServer(STALE_MS);
+				}
+			}),
 			panel.webview.onDidReceiveMessage((m: ResourcesToHost) => void this.onMessage(m)),
 			deps.skills.onDidChange(() => this.schedule()),
 			deps.diagnostics.onDidChange(() => this.schedule()),
@@ -126,11 +161,17 @@ class ResourcesPanel {
 				}
 			}),
 		);
+		this.poll = setInterval(() => {
+			if (this.panel.visible) {
+				this.refreshServer(POLL_MS / 2);
+			}
+		}, POLL_MS);
 	}
 
 	private dispose(): void {
 		ResourcesPanel.current = undefined;
 		clearTimeout(this.pending);
+		clearInterval(this.poll);
 		this.disposables.forEach(d => d.dispose());
 	}
 
@@ -139,27 +180,61 @@ class ResourcesPanel {
 		this.pending = setTimeout(() => void this.post(), 150);
 	}
 
-	private async post(): Promise<void> {
+	private async post(): Promise<ResourcesState | undefined> {
 		try {
-			const msg: ResourcesToWebview = { type: "state", state: await this.state() };
+			const state = await this.state();
+			const msg: ResourcesToWebview = { type: "state", state };
 			await this.panel.webview.postMessage(msg);
+			return state;
 		} catch (e) {
 			console.error("NVM Resources: state failed", e);
+			return undefined;
 		}
 	}
 
-	private async connect(base: string): Promise<void> {
+	/** Quietly re-read the server listing when the last check is older than `maxAgeMs`. */
+	private refreshServer(maxAgeMs: number): void {
+		if (this.base && !this.fetching && (!this.checkedAt || Date.now() - this.checkedAt > maxAgeMs)) {
+			void this.connect(this.base, true);
+		}
+	}
+
+	/**
+	 * Read the server listing. `quiet` (background refresh): no "connecting"
+	 * flicker, and skipped while another read is still running.
+	 */
+	private async connect(base: string, quiet = false): Promise<void> {
 		const normalized = normalizeServerBase(base);
 		if (!normalized) {
 			this.status = "error";
 			this.serverError = vscode.l10n.t("Enter an IP, host name or http(s) URL");
-			return this.post();
+			await this.post();
+			return;
+		}
+		if (quiet && this.fetching) {
+			return;
+		}
+		if (normalized !== this.base) {
+			this.knownUpdates = undefined;
 		}
 		this.base = normalized;
-		this.status = "connecting";
-		this.serverError = undefined;
-		await this.post();
-		const { catalog, errors } = await fetchCatalog(normalized);
+		if (!quiet) {
+			this.status = "connecting";
+			this.serverError = undefined;
+			await this.post();
+		}
+		this.fetching = true;
+		let result: Awaited<ReturnType<typeof fetchCatalog>>;
+		try {
+			result = await fetchCatalog(normalized);
+		} finally {
+			this.fetching = false;
+		}
+		if (normalized !== this.base) {
+			return; // the user connected to another server meanwhile
+		}
+		this.checkedAt = Date.now();
+		const { catalog, errors } = result;
 		if (errors.length === 3) {
 			this.catalog = undefined;
 			this.status = "error";
@@ -170,7 +245,26 @@ class ResourcesPanel {
 			this.serverError = errors.length ? errors.join("; ") : undefined;
 			await rememberServerBase(this.deps.context, normalized);
 		}
-		await this.post();
+		this.announceUpdates(await this.post());
+	}
+
+	/** Toast when a server check finds updates that the previous check did not have. */
+	private announceUpdates(state: ResourcesState | undefined): void {
+		if (!state || this.status !== "online") {
+			return;
+		}
+		const updates = new Set(state.rows.filter(r => r.status === "update").map(r => `${r.kind}|${r.id}`));
+		const fresh = this.knownUpdates ? [...updates].filter(k => !this.knownUpdates!.has(k)) : [];
+		this.knownUpdates = updates;
+		if (!fresh.length) {
+			return;
+		}
+		const names = fresh.map(k => k.slice(k.indexOf("|") + 1));
+		const list = names.slice(0, 5).join(", ") + (names.length > 5 ? ", …" : "");
+		const show = vscode.l10n.t("Show");
+		void vscode.window
+			.showInformationMessage(vscode.l10n.t("NVM server {0} has {1} new update(s): {2}", this.base, fresh.length, list), show)
+			.then(a => a === show && this.panel.reveal());
 	}
 
 	private async onMessage(m: ResourcesToHost): Promise<void> {
@@ -178,20 +272,26 @@ class ResourcesPanel {
 			switch (m.type) {
 				case "ready":
 					await this.post();
-					if (this.base && !this.catalog) {
-						await this.connect(this.base);
+					if (this.base) {
+						await this.connect(this.base, !!this.catalog);
 					}
 					return;
 				case "refresh":
 					this.deps.skills.reload();
-					return this.base ? this.connect(this.base) : this.post();
+					await (this.base ? this.connect(this.base) : this.post());
+					return;
 				case "connect":
 					return this.connect(m.base);
 				case "setContext":
 					await writeSkillContext(m.key);
-					return this.post();
+					await this.post();
+					return;
 				case "install":
 					return this.install(this.planFor(m.items));
+				case "updateAll": {
+					const rows = (await this.state()).rows.filter(r => r.status === "update");
+					return this.install(this.planFor(rows.map(r => ({ kind: r.kind, id: r.id }))));
+				}
 				case "installContext": {
 					if (this.catalog) {
 						const context = this.deps.skills.contextFor(this.lastDump?.fsPath);
@@ -252,7 +352,7 @@ class ResourcesPanel {
 		if (kind === "skill") {
 			const all = await this.deps.skills.listAll(this.lastDump?.fsPath);
 			const meta = all.find(s => skillId(s) === id && s.scope === "user") ?? all.find(s => skillId(s) === id);
-			return meta && { uri: vscode.Uri.file(meta.dir) };
+			return meta && { uri: vscode.Uri.parse(meta.dir) }; // SkillMeta.dir is a URI string
 		}
 		if (kind === "config") {
 			return { uri: vscode.Uri.joinPath(nvmStudioConfUri(), ...id.split("/")) };
@@ -330,6 +430,9 @@ class ResourcesPanel {
 			const remote = remoteSkills.get(id);
 			const path = remote?.path ?? locals[0]?.hierarchy ?? [];
 			const lv = installedSkillVersion(id);
+			// Installs land in the user folder: compare that copy (builtin / workspace copies are not ours to update).
+			const userCopy = locals.find(m => m.scope === "user");
+			const same = remote ? await sameContent(userCopy && vscode.Uri.parse(userCopy.dir), remote.files, remote.hash) : undefined;
 			rows.push({
 				kind: "skill",
 				id,
@@ -340,7 +443,7 @@ class ResourcesPanel {
 				remoteVersion: remote?.version,
 				local: locals.length > 0,
 				remote: !!remote,
-				status: statusOf(locals.length > 0, !!remote, lv, remote?.version),
+				status: statusOf(locals.length > 0, !!remote, lv, remote?.version, same),
 				inContext: visibleIn(path, context),
 				active: locals.some(m => activeDirs.has(m.dir)),
 				scope: [...new Set(locals.map(m => m.scope))].join(", "),
@@ -359,6 +462,7 @@ class ResourcesPanel {
 			const local = configs.includes(id);
 			const parts = id.split("/");
 			const name = parts[parts.length - 1];
+			const same = remote && local ? await sameContent(nvmStudioConfUri(), [id, ...remote.requires], remote.hash) : undefined;
 			rows.push({
 				kind: "config",
 				id,
@@ -369,7 +473,7 @@ class ResourcesPanel {
 					.join(" · "),
 				local,
 				remote: !!remote,
-				status: statusOf(local, !!remote),
+				status: statusOf(local, !!remote, undefined, undefined, same),
 				inContext: plannedConfigs.has(id) || (!!key && id.startsWith(`${key}/`)),
 				active: usedDescriptors.has(name.toLowerCase()),
 				removable: local,
@@ -384,6 +488,7 @@ class ResourcesPanel {
 			const remote = remoteEngines.find(e => e.id === local.ref || (e.manifestId && e.manifestId === local.manifest.id));
 			const id = remote?.id ?? local.ref;
 			seen.add(id);
+			const same = remote ? await sameContent(local.dir, remote.files, remote.hash) : undefined;
 			rows.push({
 				kind: "engine",
 				id: local.ref,
@@ -394,7 +499,7 @@ class ResourcesPanel {
 				remoteVersion: remote?.version,
 				local: true,
 				remote: !!remote,
-				status: statusOf(true, !!remote, local.manifest.version, remote?.version),
+				status: statusOf(true, !!remote, local.manifest.version, remote?.version, same),
 				inContext: plannedEngines.has(id),
 				removable: true,
 			});
@@ -427,7 +532,13 @@ class ResourcesPanel {
 		const title = contextCandidates([], context).find(c => c.key === key)?.title ?? key;
 
 		return {
-			server: { base: this.base, status: this.status, error: this.serverError },
+			server: {
+				base: this.base,
+				status: this.status,
+				error: this.serverError,
+				checkedAt: this.checkedAt,
+				updates: rows.filter(r => r.status === "update").length,
+			},
 			context: { key, title, source: key === setting ? (key ? "setting" : "none") : "descriptor", nodes },
 			rows,
 			missing: plan?.missing ?? [],

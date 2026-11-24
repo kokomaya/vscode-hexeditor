@@ -1,0 +1,14 @@
+{
+  "_comment": "What sync-server.mjs publishes to a deployed install server. Only the paths listed here leave the repo; everything else under server/demo (chipA sample project, demo-vendor engine, engine example descriptors) stays a local demo. Paths are files or folders; `data` entries are relative to server/demo and land under <server>/data/ at the same path.",
+  "engines": {
+    "vector-fee-v3": { "target": "vector/fee-v3", "conf": ["vector.nvmlayout.json"] }
+  },
+  "data": [
+    "conf/vector/dem",
+    "conf/radar/ARS620",
+    "skills/radar/dem-event-memory",
+    "skills/radar/reset-dtc-investigation",
+    "skills/radar/reset-exception-analysis",
+    "skills/radar/reset-record"
+  ]
+}
