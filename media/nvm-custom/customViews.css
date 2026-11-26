@@ -164,3 +164,9 @@ tbody td.clickable {
 tbody tr:hover {
 	background: var(--vscode-list-hoverBackground);
 }
+
+/* Each table scrolls on its own and is layout-contained from the rest of the page. */
+.table-scroll {
+	overflow-x: auto;
+	contain: layout paint;
+}

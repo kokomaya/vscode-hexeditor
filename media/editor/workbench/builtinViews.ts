@@ -14,15 +14,29 @@ import InspectIcon from "@vscode/codicons/src/icons/inspect.svg";
 import ListTreeIcon from "@vscode/codicons/src/icons/list-tree.svg";
 import PreviewIcon from "@vscode/codicons/src/icons/preview.svg";
 import TableIcon from "@vscode/codicons/src/icons/table.svg";
-import { WorkbenchViewIds as V } from "../../../shared/nvm/workbench/viewIds";
+import { selector } from "recoil";
+import { CustomViewParams, WorkbenchViewIds as V } from "../../../shared/nvm/workbench/viewIds";
 import { HexPanel } from "../hexPanel";
+import { nvmCustomViewsListAtom } from "../state";
 import { AnnotationsPanel } from "./panels/annotations/annotationsPanel";
 import { BlocksTablePanel } from "./panels/blocksTable/blocksTablePanel";
 import { BlocksTreePanel } from "./panels/blocksTree/blocksTreePanel";
 import { CustomViewPanel } from "./panels/customView/customViewPanel";
 import { InspectorPanel } from "./panels/inspectorPanel";
 import { OverviewPanel } from "./panels/overview/overviewPanel";
-import { viewRegistry } from "./registry";
+import { viewRegistry, ViewSubItem } from "./registry";
+
+/** Every custom view of this dump, as second-level entries of "Custom View". */
+const customViewSubItems = selector<ViewSubItem[]>({
+	key: "workbenchCustomViewSubItems",
+	get: ({ get }) =>
+		get(nvmCustomViewsListAtom).map(ref => ({
+			key: ref.id,
+			title: ref.name,
+			hint: ref.definition?.scope === "template" ? "Template" : undefined,
+			params: { customViewId: ref.id },
+		})),
+});
 
 let registered = false;
 
@@ -82,6 +96,8 @@ export function registerBuiltinViews(): void {
 		icon: PreviewIcon,
 		requires: ["layout"],
 		multiInstance: true,
+		subItems: customViewSubItems,
+		matchesSubItem: (params: CustomViewParams, itemParams) => params?.customViewId === itemParams.customViewId,
 		component: CustomViewPanel,
 	});
 	viewRegistry.register({

@@ -11,6 +11,7 @@ const fileImports = [
 	() => import("./nvmArxml.test"),
 	() => import("./nvmStructRich.test"),
 	() => import("./nvmCustomView.test"),
+	() => import("./nvmDecodedTree.test"),
 	() => import("./nvmSkills.test"),
 	() => import("./nvmAnalysis.test"),
 	() => import("./nvmWorkbench.test"),

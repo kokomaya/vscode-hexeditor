@@ -7,6 +7,7 @@ import {
 	nameFamilyGlob,
 	NvmCustomView,
 	resolveCustomView,
+	customViewGroups,
 	selectBlocks,
 	findNode,
 } from "../../shared/nvm/customView";
@@ -307,6 +308,23 @@ describe("NVM custom view (whole-block, fingerprint grouping)", () => {
 			const row0 = g.rows.find(x => x.blockLabel === "M0")!;
 			expect(row0.cells["B"].text).to.equal("");
 			expect(row0.cells["B"].offset).to.equal(undefined);
+		});
+	});
+
+	describe("customViewGroups", () => {
+		it("lists each group's matched blocks (offset order) with the same key/label as the resolver", () => {
+			const blocks = sampleBlocks();
+			const fpA = fingerprintBlock(blocks.find(b => b.id === "a0")!);
+			const v = view([
+				{ by: "fingerprint", value: fpA },
+				{ by: "id", value: "nope" },
+			]);
+			const groups = customViewGroups(v, blocks);
+			const resolved = resolveCustomView(v, blocks);
+			expect(groups.map(g => g.key)).to.deep.equal(resolved.groups.map(g => g.key));
+			expect(groups.map(g => g.label)).to.deep.equal(resolved.groups.map(g => g.label));
+			expect(groups[0].blocks.map(b => b.id)).to.deep.equal(["a0", "a1"]);
+			expect(groups[1].blocks).to.deep.equal([]);
 		});
 	});
 

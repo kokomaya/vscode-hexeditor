@@ -78,44 +78,6 @@
 	opacity: 1;
 }
 
-.tableWrap {
-	overflow-x: auto;
-}
-
-.table {
-	border-collapse: collapse;
-	white-space: nowrap;
-}
-
-.table th {
-	text-align: left;
-	padding: 3px 8px;
-	background: var(--vscode-editorGroupHeader-tabsBackground);
-	border-bottom: 1px solid var(--vscode-panel-border, transparent);
-}
-
-.table td {
-	padding: 2px 8px;
-	border-bottom: 1px solid var(--vscode-panel-border, transparent);
-}
-
-.table tr:hover td {
-	background: var(--vscode-list-hoverBackground);
-}
-
-.blockCell,
-.clickable {
-	cursor: pointer;
-}
-
-.blockCell {
-	color: var(--vscode-textLink-foreground);
-}
-
-.clickable:hover {
-	text-decoration: underline;
-}
-
 .muted {
 	opacity: 0.7;
 	padding: 4px 0;

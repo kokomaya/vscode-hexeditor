@@ -123,6 +123,23 @@ export const Workbench: React.FC = () => {
 		}
 	};
 
+	/** "+ View": open a new instance, or focus the panel already showing the picked sub-item. */
+	const onAddView = (viewId: string, params?: Record<string, unknown>) => {
+		const controller = controllerRef.current;
+		if (!controller) {
+			return;
+		}
+		const view = viewRegistry.get(viewId);
+		if (params && view?.matchesSubItem) {
+			const existing = controller.panelsOf(viewId).find(p => view.matchesSubItem!(p.params ?? {}, params));
+			if (existing) {
+				existing.api.setActive();
+				return;
+			}
+		}
+		controller.showView(viewId, params, true);
+	};
+
 	const onAskAi = () =>
 		askAi(
 			selectedBlock
@@ -148,7 +165,7 @@ export const Workbench: React.FC = () => {
 					}}
 					onToggleLock={() => session.setLocked(!snapshot.locked)}
 					onSaveAs={onSaveAs}
-					onAddView={viewId => controllerRef.current?.showView(viewId, undefined, true)}
+					onAddView={onAddView}
 					onAskAi={onAskAi}
 				/>
 				<div className={style.dockHost}>

@@ -41,6 +41,8 @@ export type BlocksTableParams = TableQuery;
 export interface CustomViewParams {
 	/** Id of the custom view to show (undefined = the first available). */
 	customViewId?: string;
+	/** Per-group table state (sort / visible columns), keyed by the group key. */
+	groupTables?: Record<string, TableQuery>;
 }
 
 /** Params of a Blocks Tree panel instance. */

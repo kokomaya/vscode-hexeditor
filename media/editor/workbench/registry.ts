@@ -8,9 +8,22 @@
  */
 
 import React from "react";
+import { RecoilValueReadOnly } from "recoil";
 
 /** Capabilities a view may need before it is useful. */
 export type ViewRequirement = "layout";
+
+/**
+ * A second-level entry of a view in the view library, e.g. one concrete
+ * custom view ("Reset", "DEM") under "Custom View". Picking it opens the view
+ * with `params` (or focuses the panel already showing it).
+ */
+export interface ViewSubItem {
+	key: string;
+	title: string;
+	hint?: string;
+	params: Record<string, unknown>;
+}
 
 export interface WorkbenchPanelProps<P = Record<string, unknown>> {
 	/** Dock panel id (stable for the panel's lifetime). */
@@ -34,6 +47,13 @@ export interface WorkbenchViewType<P = any> {
 	multiInstance: boolean;
 	/** Optional title for the n-th instance (multi-instance views). */
 	instanceTitle?(params: P, index: number): string;
+	/**
+	 * Optional live list of second-level entries shown as a collapsible
+	 * submenu under this view in the view library.
+	 */
+	subItems?: RecoilValueReadOnly<ViewSubItem[]>;
+	/** Whether an open panel (its params) already shows the sub-item with `itemParams`. */
+	matchesSubItem?(params: P, itemParams: Record<string, unknown>): boolean;
 	component: React.ComponentType<WorkbenchPanelProps<P>>;
 }
 

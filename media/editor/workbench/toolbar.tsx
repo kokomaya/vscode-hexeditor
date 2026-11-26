@@ -39,7 +39,7 @@ export interface ToolbarProps {
 	onResetAll(): void;
 	onToggleLock(): void;
 	onSaveAs(): void;
-	onAddView(viewId: string): void;
+	onAddView(viewId: string, params?: Record<string, unknown>): void;
 	onAskAi(): void;
 }
 

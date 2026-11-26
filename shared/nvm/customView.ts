@@ -144,10 +144,20 @@ export function fingerprintBlock(block: NvmBlockInfo): string {
 	if (!block.decoded || block.decoded.length === 0) {
 		return "none";
 	}
+	// Keyed by the decoded tree (immutable once produced), so a re-pushed block
+	// with a fresh tree is re-hashed while repeated resolves are O(1) per block.
+	const cached = fingerprintCache.get(block.decoded);
+	if (cached !== undefined) {
+		return cached;
+	}
 	const tokens: string[] = [];
 	collectLeafTokens(block.decoded, "", tokens);
-	return fnv1a(tokens.join("|"));
+	const fp = fnv1a(tokens.join("|"));
+	fingerprintCache.set(block.decoded, fp);
+	return fp;
 }
+
+const fingerprintCache = new WeakMap<readonly NvmDecodedNode[], string>();
 
 /** Whether a single selector matches a block. */
 function selectorMatches(sel: BlockSelector, block: NvmBlockInfo): boolean {
@@ -270,85 +280,137 @@ export function nameFamilyGlob(name: string): string {
 	return base === name ? name : `${base}*`;
 }
 
-/**
- * Collect every leaf field path across a set of blocks, in first-seen order.
- * Each column key is the dotted path; the label is the last segment. Deeper
- * fields are flattened so nested-struct members become their own columns.
- */
-function unionColumns(blocks: readonly NvmBlockInfo[]): ResolvedColumn[] {
-	// First pass: which leaf paths ever carry an enum label (in ANY block)? Such
-	// fields get split into an id column + a name column so the numeric value and
-	// its symbolic name are both visible. Purely value-shape driven — no vendor
-	// knowledge; any field with a resolved enum name is split the same way.
-	const enumPaths = new Set<string>();
-	const collectEnum = (nodes: readonly NvmDecodedNode[] | undefined, prefix: string): void => {
-		for (const n of nodes ?? []) {
-			const path = prefix ? `${prefix}.${n.name}` : n.name;
-			if (n.children && n.children.length > 0) {
-				collectEnum(n.children, path);
-			} else if (n.enumLabel !== undefined) {
-				enumPaths.add(path);
-			}
-		}
-	};
-	for (const b of blocks) {
-		collectEnum(b.decoded, "");
-	}
+/** A decoded subtree indexed by dotted leaf path (first occurrence wins, like {@link findNode}). */
+type LeafIndex = Map<string, NvmDecodedNode>;
 
-	const seen = new Set<string>();
-	const columns: ResolvedColumn[] = [];
-	const walk = (nodes: readonly NvmDecodedNode[] | undefined, prefix: string): void => {
-		for (const n of nodes ?? []) {
-			const path = prefix ? `${prefix}.${n.name}` : n.name;
-			if (n.children && n.children.length > 0) {
-				walk(n.children, path);
-			} else if (!seen.has(path)) {
-				seen.add(path);
-				columns.push({ key: path, label: n.name });
-				if (enumPaths.has(path)) {
-					columns.push({ key: `${path}${NAME_COLUMN_SUFFIX}`, label: `${n.name} Name` });
-				}
-			}
+const joinPath = (prefix: string, name: string): string => (prefix ? `${prefix}.${name}` : name);
+
+/**
+ * Index every leaf of a decoded tree by its dotted path, in document order.
+ */
+function indexLeaves(
+	nodes: readonly NvmDecodedNode[] | undefined,
+	prefix: string,
+	out: LeafIndex,
+): LeafIndex {
+	for (const n of nodes ?? []) {
+		const path = joinPath(prefix, n.name);
+		if (n.children && n.children.length > 0) {
+			indexLeaves(n.children, path, out);
+		} else if (!out.has(path)) {
+			out.set(path, n);
 		}
-	};
-	for (const b of blocks) {
-		walk(b.decoded, "");
 	}
-	return columns;
+	return out;
 }
 
-/** Resolve one group selector into a sub-table. */
-function resolveGroup(selector: BlockSelector, blocks: readonly NvmBlockInfo[]): ResolvedGroup {
-	const matched = selectBlocks(selector, blocks);
-	const columns = unionColumns(matched);
-	const rows: ResolvedRow[] = matched.map(block => {
-		const cells: Record<string, ResolvedCell> = {};
-		for (const col of columns) {
-			const isNameCol = col.key.endsWith(NAME_COLUMN_SUFFIX);
-			const path = isNameCol ? col.key.slice(0, -NAME_COLUMN_SUFFIX.length) : col.key;
-			const node = findNode(block.decoded, path.split("."));
-			if (!node) {
-				cells[col.key] = { text: "" };
-			} else if (isNameCol) {
-				// The symbolic name column of an enum field (paired with its id column).
-				cells[col.key] = { text: node.enumLabel ?? "", offset: node.offset, length: node.length };
-			} else {
-				// A split field's id column shows the numeric value; everything else
-				// keeps the default (enum-preferring) rendering.
-				const text = columns.some(c => c.key === `${path}${NAME_COLUMN_SUFFIX}`)
-					? nodeValueText(node)
-					: nodeText(node);
-				cells[col.key] = { text, offset: node.offset, length: node.length };
+/** Column model of a set of leaf indexes: the column union + which paths split into id/name. */
+interface ColumnModel {
+	columns: ResolvedColumn[];
+	/** Paths rendered as an id column plus a sibling `#name` column. */
+	split: ReadonlySet<string>;
+}
+
+/**
+ * Union of every leaf path across the indexes, in first-seen order. A path
+ * that carries an enum label in ANY index is split into an id column + a name
+ * column, so the numeric value and its symbolic name are both visible. Purely
+ * value-shape driven — no vendor knowledge.
+ */
+function buildColumns(indexes: readonly LeafIndex[]): ColumnModel {
+	const split = new Set<string>();
+	for (const index of indexes) {
+		for (const [path, node] of index) {
+			if (node.enumLabel !== undefined) {
+				split.add(path);
 			}
 		}
-		return { blockLabel: blockLabel(block), blockOffset: block.offset, cells };
+	}
+	const seen = new Set<string>();
+	const columns: ResolvedColumn[] = [];
+	for (const index of indexes) {
+		for (const [path, node] of index) {
+			if (seen.has(path)) {
+				continue;
+			}
+			seen.add(path);
+			columns.push({ key: path, label: node.name });
+			if (split.has(path)) {
+				columns.push({ key: `${path}${NAME_COLUMN_SUFFIX}`, label: `${node.name} Name` });
+			}
+		}
+	}
+	return { columns, split };
+}
+
+/** Cells of one row: O(columns) lookups in the row's leaf index. */
+function buildCells(index: LeafIndex, model: ColumnModel): Record<string, ResolvedCell> {
+	const cells: Record<string, ResolvedCell> = {};
+	for (const col of model.columns) {
+		const isNameCol = col.key.endsWith(NAME_COLUMN_SUFFIX);
+		const path = isNameCol ? col.key.slice(0, -NAME_COLUMN_SUFFIX.length) : col.key;
+		const node = index.get(path);
+		if (!node) {
+			cells[col.key] = { text: "" };
+		} else if (isNameCol) {
+			// The symbolic name column of an enum field (paired with its id column).
+			cells[col.key] = { text: node.enumLabel ?? "", offset: node.offset, length: node.length };
+		} else {
+			// A split field's id column shows the numeric value; everything else
+			// keeps the default (enum-preferring) rendering.
+			const text = model.split.has(path) ? nodeValueText(node) : nodeText(node);
+			cells[col.key] = { text, offset: node.offset, length: node.length };
+		}
+	}
+	return cells;
+}
+
+/** Stable key of a group selector (used for delete-group actions and per-group UI state). */
+export const groupKey = (selector: BlockSelector): string => `${selector.by}:${selector.value}`;
+
+/** Display label of a group: the selector's label, else its first block's de-numbered name. */
+function groupLabel(selector: BlockSelector, matched: readonly NvmBlockInfo[]): string {
+	return selector.label ?? (matched.length ? deNumber(blockLabel(matched[0])) : selector.value);
+}
+
+/** One group of a view with the blocks it matches (for block-level tables). */
+export interface CustomViewGroupBlocks {
+	key: string;
+	label: string;
+	blocks: NvmBlockInfo[];
+}
+
+/**
+ * The blocks each group of a view matches, without projecting decoded fields.
+ * Used where a group is shown as a plain block table (decoded values are read
+ * in the inspector instead).
+ */
+export function customViewGroups(
+	view: NvmCustomView,
+	blocks: readonly NvmBlockInfo[],
+): CustomViewGroupBlocks[] {
+	return view.groups.map(g => {
+		const matched = selectBlocks(g, blocks);
+		return { key: groupKey(g), label: groupLabel(g, matched), blocks: matched };
 	});
-	const label =
-		selector.label ?? (matched.length ? deNumber(blockLabel(matched[0])) : selector.value);
+}
+
+/** Resolve one group selector into a sub-table (one row per block, one column per leaf field). */
+function resolveGroup(selector: BlockSelector, blocks: readonly NvmBlockInfo[]): ResolvedGroup {
+	const matched = selectBlocks(selector, blocks);
+	// Each block's tree is walked once into a path index, so building the cells
+	// is linear in rows × columns even for blocks with thousands of fields.
+	const indexes = matched.map(b => indexLeaves(b.decoded, "", new Map()));
+	const model = buildColumns(indexes);
+	const rows: ResolvedRow[] = matched.map((block, i) => ({
+		blockLabel: blockLabel(block),
+		blockOffset: block.offset,
+		cells: buildCells(indexes[i], model),
+	}));
 	return {
-		key: `${selector.by}:${selector.value}`,
-		label,
-		columns,
+		key: groupKey(selector),
+		label: groupLabel(selector, matched),
+		columns: model.columns,
 		rows,
 		matchedBlocks: matched.length,
 	};

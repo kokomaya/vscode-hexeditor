@@ -120,6 +120,80 @@ function jump(offset: number | undefined): void {
 	}
 }
 
+/** A column of a rendered table; `cell` reads the value for one row. */
+interface TableCol<R> {
+	label: string;
+	isLabel?: boolean;
+	cell(row: R): Cell | undefined;
+}
+
+/** Columns rendered before very wide tables are folded (keeps the sidebar responsive). */
+const MAX_RENDERED_COLUMNS = 200;
+
+/**
+ * Render a plain table, capped in rows and columns. Clicks are handled once on
+ * the table via `data-offset` (no listener per cell).
+ */
+function renderTable<R>(cols: TableCol<R>[], rows: readonly R[]): HTMLElement {
+	const wrap = document.createElement("div");
+	wrap.className = "table-scroll";
+	const shownCols = cols.length > MAX_RENDERED_COLUMNS ? cols.slice(0, MAX_RENDERED_COLUMNS) : cols;
+	const shownRows = rows.length > MAX_RENDERED_ROWS ? rows.slice(0, MAX_RENDERED_ROWS) : rows;
+
+	const table = document.createElement("table");
+	const htr = document.createElement("tr");
+	for (const c of shownCols) {
+		const th = document.createElement("th");
+		th.textContent = c.label;
+		htr.appendChild(th);
+	}
+	const thead = document.createElement("thead");
+	thead.appendChild(htr);
+	table.appendChild(thead);
+
+	const tbody = document.createElement("tbody");
+	for (const row of shownRows) {
+		const tr = document.createElement("tr");
+		for (const c of shownCols) {
+			const td = document.createElement("td");
+			const cell = c.cell(row);
+			td.textContent = cell?.text ?? "";
+			if (c.isLabel) {
+				td.classList.add("block-cell");
+			}
+			if (cell && typeof cell.offset === "number") {
+				td.classList.add("clickable");
+				td.dataset.offset = String(cell.offset);
+			}
+			tr.appendChild(td);
+		}
+		tbody.appendChild(tr);
+	}
+	table.appendChild(tbody);
+	table.addEventListener("click", e => {
+		const td = (e.target as HTMLElement).closest<HTMLElement>("[data-offset]");
+		if (td?.dataset.offset) {
+			jump(Number(td.dataset.offset));
+		}
+	});
+	wrap.appendChild(table);
+
+	const notes: string[] = [];
+	if (shownRows.length < rows.length) {
+		notes.push(`showing ${shownRows.length} of ${rows.length} rows`);
+	}
+	if (shownCols.length < cols.length) {
+		notes.push(`showing ${shownCols.length} of ${cols.length} columns`);
+	}
+	if (notes.length) {
+		const more = document.createElement("div");
+		more.className = "group-empty";
+		more.textContent = notes.join(" · ");
+		wrap.appendChild(more);
+	}
+	return wrap;
+}
+
 /** Render one group's sub-table. */
 function renderGroup(view: ResolvedView, group: Group): HTMLElement {
 	const wrap = document.createElement("div");
@@ -149,52 +223,11 @@ function renderGroup(view: ResolvedView, group: Group): HTMLElement {
 		return wrap;
 	}
 
-	const shown =
-		group.rows.length > MAX_RENDERED_ROWS ? group.rows.slice(0, MAX_RENDERED_ROWS) : group.rows;
-
-	const table = document.createElement("table");
-	const thead = document.createElement("thead");
-	const htr = document.createElement("tr");
-	const blkTh = document.createElement("th");
-	blkTh.textContent = "Block";
-	htr.appendChild(blkTh);
-	for (const c of group.columns) {
-		const th = document.createElement("th");
-		th.textContent = c.label;
-		htr.appendChild(th);
-	}
-	thead.appendChild(htr);
-	table.appendChild(thead);
-
-	const tbody = document.createElement("tbody");
-	for (const row of shown) {
-		const tr = document.createElement("tr");
-		const blkTd = document.createElement("td");
-		blkTd.className = "block-cell";
-		blkTd.textContent = row.blockLabel;
-		blkTd.addEventListener("click", () => jump(row.blockOffset));
-		tr.appendChild(blkTd);
-		for (const c of group.columns) {
-			const td = document.createElement("td");
-			const cell = row.cells[c.key];
-			td.textContent = cell?.text ?? "";
-			if (cell && typeof cell.offset === "number") {
-				td.classList.add("clickable");
-				td.addEventListener("click", () => jump(cell.offset));
-			}
-			tr.appendChild(td);
-		}
-		tbody.appendChild(tr);
-	}
-	table.appendChild(tbody);
-	wrap.appendChild(table);
-
-	if (shown.length < group.rows.length) {
-		const more = document.createElement("div");
-		more.className = "group-empty";
-		more.textContent = `showing ${shown.length} of ${group.rows.length} rows`;
-		wrap.appendChild(more);
-	}
+	const cols: TableCol<Row>[] = [
+		{ label: "Block", isLabel: true, cell: r => ({ text: r.blockLabel, offset: r.blockOffset }) },
+		...group.columns.map(c => ({ label: c.label, cell: (r: Row) => r.cells[c.key] })),
+	];
+	wrap.appendChild(renderTable(cols, group.rows));
 	return wrap;
 }
 

@@ -63,9 +63,24 @@
 	opacity: 0.7;
 }
 
+/* A table stacked with others (custom view): sized to its rows, not the parent. */
+.panel.embedded {
+	height: auto;
+}
+
 .body {
 	flex: 1;
 	min-height: 0;
+	/* Cell-range selection replaces native text selection (which grabs whole rows). */
+	user-select: none;
+	/* Keeps re-layout inside the table when the rest of the webview changes. */
+	contain: layout paint;
+}
+
+.cell.cellSelected {
+	background: var(--vscode-editor-selectionBackground, var(--vscode-list-inactiveSelectionBackground));
+	color: var(--vscode-editor-selectionForeground, inherit);
+	box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, transparent);
 }
 
 .headerRow {
@@ -95,7 +110,7 @@
 .row {
 	display: grid;
 	align-items: center;
-	cursor: pointer;
+	cursor: cell;
 	border-left: 2px solid transparent;
 	box-sizing: border-box;
 }

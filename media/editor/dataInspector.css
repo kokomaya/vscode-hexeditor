@@ -155,18 +155,79 @@
 	font-family: var(--vscode-font-family);
 }
 
-.nvmDecodedLeaf {
+.nvmDecodedSection {
+	margin: 0 0 0.6rem 0;
+}
+
+.nvmDecodedTitleRow {
 	display: flex;
-	justify-content: space-between;
-	gap: 12px;
-	padding: 1px 4px;
-	border-radius: 2px;
+	align-items: center;
+	gap: 2px;
+	margin-bottom: 4px;
+}
+
+.nvmDecodedTitleRow .nvmDecodedTitle {
+	flex: 1;
+	margin-bottom: 0;
+}
+
+.nvmTreeButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 3px;
+	background: transparent;
+	color: inherit;
 	cursor: pointer;
 }
 
-.nvmDecodedLeaf:hover,
-.nvmDecodedBranch > summary:hover {
+.nvmTreeButton:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.nvmTreeButton svg {
+	width: 16px;
+	height: 16px;
+	fill: currentColor;
+}
+
+/* One tree row (branch or leaf): twistie · name · value. */
+.nvmDecodedRow {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 1px 4px 1px 0;
+	border-radius: 2px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.nvmDecodedRow:hover {
 	background: var(--vscode-list-hoverBackground);
+}
+
+/* The node owning the byte focused in the hex view (or the clicked row). */
+.nvmDecodedLocated,
+.nvmDecodedLocated:hover {
+	background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-inactiveSelectionBackground));
+	color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+
+.nvmTwistie {
+	display: inline-flex;
+	flex: 0 0 16px;
+	width: 16px;
+	height: 16px;
+}
+
+.nvmTwistie svg {
+	width: 16px;
+	height: 16px;
+	fill: currentColor;
 }
 
 .nvmDecodedName {
@@ -246,26 +307,21 @@
 }
 
 .nvmDecodedValue {
+	margin-left: auto;
+	padding-left: 12px;
 	color: var(--vscode-debugTokenExpression-number, inherit);
 	text-align: right;
 	white-space: nowrap;
 }
 
 .nvmDecodedMeta {
+	margin-left: auto;
+	padding-left: 8px;
 	opacity: 0.6;
 	font-size: 0.85em;
-	margin-left: 8px;
+	white-space: nowrap;
 }
 
-.nvmDecodedBranch > summary {
-	cursor: pointer;
-	user-select: none;
-	padding: 1px 4px;
-	border-radius: 2px;
-	display: flex;
-	justify-content: space-between;
-	gap: 8px;
-}
 
 .nvmRawDetails > summary {
 	cursor: pointer;

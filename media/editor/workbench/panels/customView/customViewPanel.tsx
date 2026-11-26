@@ -10,7 +10,8 @@
 
 import React, { useMemo } from "react";
 import { useRecoilValue } from "recoil";
-import { resolveCustomView } from "../../../../../shared/nvm/customView";
+import { customViewGroups } from "../../../../../shared/nvm/customView";
+import { TableQuery } from "../../../../../shared/nvm/views/tableQuery";
 import { CustomViewParams } from "../../../../../shared/nvm/workbench/viewIds";
 import { EmptyState } from "../../../components/emptyState";
 import * as select from "../../../state";
@@ -21,14 +22,21 @@ import { CustomViewGroup } from "./customViewGroup";
 
 const style = throwOnUndefinedAccessInDev(_style);
 
+/** Stable default so a group's table memoization isn't invalidated every render. */
+const DEFAULT_QUERY: TableQuery = {};
+
 export const CustomViewPanel: React.FC<WorkbenchPanelProps<CustomViewParams>> = ({ params, setParams }) => {
 	const refs = useRecoilValue(select.nvmCustomViewsListAtom);
 	const blocks = useRecoilValue(select.nvmBlocksAtom);
 	const current = refs.find(r => r.id === params.customViewId) ?? refs[0];
-	const resolved = useMemo(
-		() => (current?.definition ? resolveCustomView(current.definition, blocks) : undefined),
+	const groups = useMemo(
+		() => (current?.definition ? customViewGroups(current.definition, blocks) : undefined),
 		[current?.definition, blocks],
 	);
+	const setGroupQuery = (groupKey: string, patch: Partial<TableQuery>) => {
+		const tables = params.groupTables ?? {};
+		setParams({ groupTables: { ...tables, [groupKey]: { ...(tables[groupKey] ?? {}), ...patch } } });
+	};
 
 	if (refs.length === 0) {
 		return (
@@ -74,14 +82,16 @@ export const CustomViewPanel: React.FC<WorkbenchPanelProps<CustomViewParams>> = 
 				)}
 			</div>
 			<div className={style.body}>
-				{!resolved || resolved.groups.length === 0 ? (
+				{!current || !groups || groups.length === 0 ? (
 					<div className={style.muted}>This view has no blocks yet.</div>
 				) : (
-					resolved.groups.map(g => (
+					groups.map(g => (
 						<CustomViewGroup
 							key={g.key}
 							group={g}
-							onRemove={() => command({ kind: "deleteGroup", viewId: resolved.id, groupKey: g.key })}
+							query={params.groupTables?.[g.key] ?? DEFAULT_QUERY}
+							onQuery={patch => setGroupQuery(g.key, patch)}
+							onRemove={() => command({ kind: "deleteGroup", viewId: current.id, groupKey: g.key })}
 						/>
 					))
 				)}
