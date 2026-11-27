@@ -4,6 +4,13 @@
 	left: 0;
 }
 
+/* Quick toggle right of the gear (22px icon button + 1px gap), inside the header's address column. */
+.hover {
+	position: absolute;
+	top: 0;
+	left: 23px;
+}
+
 .content {
 	display: grid;
 	grid-template-columns: 1fr auto;

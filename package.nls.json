@@ -8,6 +8,7 @@
 	"nvmstudio.defaultEndianness": "The endianness selected when loading the editor.",
 	"nvmstudio.columnWidth": "The number of bytes per row to show in the editor.",
 	"nvmstudio.showDecodedText": "Whether decoded text should be shown in the editor.",
+	"nvmstudio.showHoverPopover": "Show popups (unit details, notes, hover data inspector, tooltips) when hovering bytes in the hex view. Toggle with the speech-bubble button next to the settings gear.",
 	"nvmstudio.showOpenFileButton": "Show Hex Editor button in editor menu.",
 	"nvmStudio.openFile": "Open Active File in Hex Editor",
 	"nvmStudio.goToOffset": "Go To Offset",

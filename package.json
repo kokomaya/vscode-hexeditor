@@ -86,6 +86,11 @@
             "default": true,
             "description": "%nvmstudio.showDecodedText%"
           },
+          "nvmstudio.showHoverPopover": {
+            "type": "boolean",
+            "default": true,
+            "description": "%nvmstudio.showHoverPopover%"
+          },
           "nvmstudio.showOpenFileButton": {
             "type": "boolean",
             "default": false,

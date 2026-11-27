@@ -79,6 +79,8 @@ export const enum InspectorLocation {
 export interface IEditorSettings {
 	copyType: CopyFormat;
 	showDecodedText: boolean;
+	/** Show popovers (unit / note / hover inspector / tooltips) when hovering bytes. */
+	showHoverPopover: boolean;
 	columnWidth: number;
 	inspectorType: InspectorLocation;
 	defaultEndianness: Endianness;

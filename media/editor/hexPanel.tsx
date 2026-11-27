@@ -17,7 +17,7 @@ import _style from "./hexEdit.css";
 import { useTheme } from "./hooks";
 import { ReadonlyWarning } from "./readonlyWarning";
 import { ScrollContainer } from "./scrollContainer";
-import { SettingsGear } from "./settings";
+import { HoverPopoverToggle, SettingsGear } from "./settings";
 import * as select from "./state";
 import { strings } from "./strings";
 import { throwOnUndefinedAccessInDev } from "./util";
@@ -87,6 +87,7 @@ export const HexPanel: React.FC = () => {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const dimensions = useRecoilValue(select.dimensions);
 	const inspectorLocation = useRecoilValue(select.dataInspectorLocation);
+	const showHover = useRecoilValue(select.showHoverPopover);
 	const isLargeFile = useRecoilValue(select.isLargeFile);
 	const [bypassLargeFilePrompt, setBypassLargeFile] = useRecoilState(select.bypassLargeFilePrompt);
 	useContainerDimensions(containerRef);
@@ -105,10 +106,11 @@ export const HexPanel: React.FC = () => {
 				<>
 					<FindWidget />
 					<SettingsGear />
+					<HoverPopoverToggle />
 					<DataHeader />
 					<ScrollContainer />
 					<ReadonlyWarning />
-					{inspectorLocation === InspectorLocation.Hover && <DataInspectorHover />}
+					{inspectorLocation === InspectorLocation.Hover && showHover && <DataInspectorHover />}
 				</>
 			)}
 		</div>

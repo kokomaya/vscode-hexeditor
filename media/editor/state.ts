@@ -371,6 +371,12 @@ export const showDecodedText = selector({
 	get: ({ get }) => get(editorSettings).showDecodedText,
 });
 
+/** Whether hover popovers / tooltips on hex bytes are enabled (default on). */
+export const showHoverPopover = selector({
+	key: "showHoverPopover",
+	get: ({ get }) => get(editorSettings).showHoverPopover !== false,
+});
+
 // Atom used to invalidate data when a reload is requested.
 const reloadGeneration = atom({
 	key: "reloadGeneration",

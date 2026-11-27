@@ -1,3 +1,4 @@
+import CommentIcon from "@vscode/codicons/src/icons/comment.svg";
 import SettingsGearIcon from "@vscode/codicons/src/icons/settings-gear.svg";
 import React, { useState } from "react";
 import { useRecoilState } from "recoil";
@@ -5,7 +6,7 @@ import _style from "./settings.css";
 import * as select from "./state";
 import { strings } from "./strings";
 import { throwOnUndefinedAccessInDev } from "./util";
-import { VsIconButton, VsTextField, VsWidgetPopover } from "./vscodeUi";
+import { VsIconButton, VsIconCheckbox, VsTextField, VsWidgetPopover } from "./vscodeUi";
 
 const style = throwOnUndefinedAccessInDev(_style);
 
@@ -30,12 +31,49 @@ export const SettingsGear: React.FC = () => {
 	);
 };
 
+/**
+ * Quick toggle right of the gear: show / hide the popovers (unit, note, hover
+ * inspector) and tooltips that appear when hovering bytes. On by default.
+ */
+export const HoverPopoverToggle: React.FC = () => {
+	const [settings, updateSettings] = useRecoilState(select.editorSettings);
+	const on = settings.showHoverPopover !== false;
+	return (
+		<div className={style.hover}>
+			<VsIconCheckbox
+				checked={on}
+				title={on ? "Hover popups on — click to hide them" : "Hover popups off — click to show them again"}
+				onToggle={checked => updateSettings(s => ({ ...s, showHoverPopover: checked }))}
+			>
+				<CommentIcon />
+			</VsIconCheckbox>
+		</div>
+	);
+};
+
 const SettingsContent: React.FC = () => (
 	<div className={style.content}>
 		<TextCheckbox />
+		<HoverPopoverCheckbox />
 		<ColumnWidth />
 	</div>
 );
+
+const HoverPopoverCheckbox: React.FC = () => {
+	const [settings, updateSettings] = useRecoilState(select.editorSettings);
+
+	return (
+		<>
+			<label htmlFor="hover-popover-checkbox">{strings.showHoverPopover}</label>
+			<input
+				type="checkbox"
+				id="hover-popover-checkbox"
+				checked={settings.showHoverPopover !== false}
+				onChange={evt => updateSettings(s => ({ ...s, showHoverPopover: evt.target.checked }))}
+			/>
+		</>
+	);
+};
 
 const TextCheckbox: React.FC = () => {
 	const [settings, updateSettings] = useRecoilState(select.editorSettings);

@@ -346,12 +346,13 @@ export const DataDisplay: React.FC = () => {
 	});
 
 	const clearPasting = useCallback(() => setPasting(undefined), []);
+	const showHover = useRecoilValue(select.showHoverPopover);
 
 	return (
 		<div ref={containerRef} className={style.dataDisplay}>
 			<DataRows />
 			<PastePopup context={pasting} hide={clearPasting} />
-			<NvmHoverPopover />
+			{showHover && <NvmHoverPopover />}
 		</div>
 	);
 };
@@ -781,6 +782,7 @@ const DataCell: React.FC<{
 	const ctx = useDisplayContext();
 	const setReadonlyWarning = useSetRecoilState(select.showReadonlyWarningForEl);
 	const editMode = useRecoilValue(select.editMode);
+	const showHover = useRecoilValue(select.showHoverPopover);
 
 	const nvmBlock = nvmField?.block;
 	const setSelectedNvmBlock = useSetRecoilState(select.selectedNvmBlockAtom);
@@ -1061,7 +1063,9 @@ const DataCell: React.FC<{
 					: undefined),
 			}}
 			title={
-				tagTitle
+				!showHover
+					? undefined
+					: tagTitle
 					? `Tags: ${tagTitle}`
 					: isSelectedUnit && nvmField?.link
 						? `Ctrl/Cmd-click to jump${nvmField.link.label ? ` to ${nvmField.link.label}` : ""}`
